@@ -90,8 +90,8 @@ class KDForSentEmb(L.LightningModule):
         #     preds, target = self.generate(model_inputs_gen)
         #     res["preds"] = preds
         #     res["target"] = target
-        # if dataloader_idx not in self.validation_step_outputs:
-        #     self.validation_step_outputs[dataloader_idx] = []
+        if dataloader_idx not in self.validation_step_outputs:
+            self.validation_step_outputs[dataloader_idx] = []
         self.validation_step_outputs[dataloader_idx].append(res)
         return outputs.loss
 

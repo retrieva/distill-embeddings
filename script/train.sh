@@ -9,6 +9,6 @@ uv run python train.py \
     --batch_size 64 \
     --num_epochs 1 \
     --max_length 4096 \
-    --val_check_interval 0.1 \
+    --val_check_interval 0.05 \
     --validate_first \
     --loss_type ckd
