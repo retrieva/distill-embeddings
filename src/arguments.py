@@ -22,10 +22,10 @@ def parse_args():
     parser.add_argument(
         "--output_dir", type=str, default="logs", help="output directory"
     )
-    parser.add_argument("--data_path", type=str, required=True, help="path to data dir")
+    parser.add_argument("--data_dir", type=str, required=True, help="path to data dir")
+    parser.add_argument("--dataset_name", type=str, required=True, help="name of the dataset")
     parser.add_argument("--num_epochs", type=int, default=5, help="number of epochs")
     parser.add_argument("--val_check_interval", type=float, default=1.0)
-    parser.add_argument("--accumulate_grad_batches", type=int, default=1)
     parser.add_argument(
         "--validate_first", action="store_true", help="run validation before training"
     )
@@ -84,5 +84,11 @@ def parse_args():
         type=float,
         default=0.1,
         help="warmup ratio for learning rate scheduler",
+    )
+    parser.add_argument(
+        "--max_length",
+        type=int,
+        default=4096,
+        help="maximum sequence length",
     )
     return parser.parse_args()

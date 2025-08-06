@@ -5,6 +5,7 @@ import torch
 from torch import nn, Tensor
 from lightning import LightningModule
 from src.distil_losses import *
+from src.data import Batch
 
 
 @dataclass
@@ -24,18 +25,19 @@ class KDLoss(nn.Module):
     def forward(
         self,
         lightning_module: LightningModule,
-        batch: Dict[str, Tensor],
+        batch: Batch,
     ) -> LossOutput:
         loss_dict = {}
-
-        student_features = lightning_module.student_model.encode(batch, convert_to_tensor=True, normalize_embeddings=True)
+        student_features = lightning_module.student_model(batch)['sentence_embedding']
         # Project student features to teacher's embedding space
         projected_features = lightning_module.linear(student_features)
 
-        with torch.no_grad():
-            teacher_features = lightning_module.teacher_model.encode(
-                batch, convert_to_tensor=True, normalize_embeddings=True
-            )
+        # TODO: 複数GPUの場合、この辺りでGatherの処理が必要かもしれない
+
+        teacher_features = batch["teacher_features"]
+        if isinstance(teacher_features, list):
+            teacher_features = torch.stack(teacher_features, dim=0)
+            
         loss = self.distil_loss_fn(
             lightning_module=lightning_module,
             projected_features=projected_features,
@@ -66,4 +68,4 @@ def get_loss_fn(args):
     else:
         raise NotImplementedError(args.loss_type)
 
-    return KDLoss(distil_loss_fn=distil_loss_fn, distil_ratio=args.distil_ratio)
+    return KDLoss(distil_loss_fn=distil_loss_fn)

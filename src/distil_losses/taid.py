@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 from lightning import LightningModule
 from .base import DistilLoss
+from typing import Optional, Dict
 
 def forward_kl(
     logits: torch.Tensor,

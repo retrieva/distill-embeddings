@@ -2,64 +2,52 @@ from typing import Dict, Any
 import torch
 from torch import Tensor
 import lightning as L
-from transformers import get_scheduler, GenerationConfig, AutoModelForCausalLM
-from src.metrics import compute_metrics
+from transformers import get_scheduler, AutoConfig
 from src.loss import get_loss_fn, LossOutput
-from src.utils import default, flatten_list, get_generated_ids, get_optimizer_params
 from sentence_transformers import SentenceTransformer
+from src.data import Batch
 
 class KDForSentEmb(L.LightningModule):
-    def __init__(self, args, generation_config=None):
+    def __init__(self, args):
         super().__init__()
         self.student_model = None
-        self.teacher_model = None
+        self.teacher_model_config = None
         self.linear = None
         self.loss_fn = get_loss_fn(args)
         self.args = args
-        # self.validation_step_outputs = {}
+        self.validation_step_outputs = {}
 
     def configure_model(self):
         self.student_model = SentenceTransformer(
             self.args.student_model,
-            # torch_dtype=torch.bfloat16,
-        )
-        self.teacher_model = SentenceTransformer(
+        ).bfloat16()
+        self.teacher_model_config = AutoConfig.from_pretrained(
             self.args.teacher_model,
-            # torch_dtype=torch.bfloat16,
+            trust_remote_code=True,
         )
         # up projection layer
         self.linear = torch.nn.Linear(
             self.student_model.get_sentence_embedding_dimension(),
-            self.teacher_model.get_sentence_embedding_dimension()
+            self.teacher_model_config.hidden_size
         )
 
-    def forward(self, batch: Dict[str, Tensor], **kwargs) -> LossOutput:
-        # TODO： 後ほど実装
+    def forward(self, batch: Batch, **kwargs) -> LossOutput:
         outputs: LossOutput = self.loss_fn(lightning_module=self, batch=batch, **kwargs)
         return outputs
 
-    def shard_step(self, batch, step="train", prefix="", **kwargs):
-        outputs = self(batch, **kwargs)
-        loss_dict = outputs.loss_dict
-        loss_dict = {
-            f"{step}/{prefix}{k}": v for k, v in loss_dict.items() if v is not None
-        }
-        return outputs.loss, loss_dict
+    def get_batch_size(self, batch: Batch) -> int:
+        return batch["input_ids"].size(0)
 
-    def get_batch_size(self, batch) -> int:
-        return batch["model_inputs"]["input_ids"].size(0)
-
-    def get_num_tokens(self, batch) -> int:
-        return torch.sum(
-            batch["model_inputs"]["input_ids"] != self.tokenizer.pad_token_id
-        )
-
-    def training_step(self, batch, batch_idx) -> Tensor:
+    def training_step(self, batch: Batch, batch_idx) -> Tensor:
         batch_size = self.get_batch_size(batch)
         # compute loss
-        loss, loss_dict = self.shard_step(batch=batch)
+        outputs = self(batch)
+        loss_dict = outputs.loss_dict
+        loss_dict = {
+            f"train/{k}": v for k, v in loss_dict.items() if v is not None
+        }
         self.log_dict(loss_dict, batch_size=batch_size, prog_bar=True)
-        return loss
+        return outputs.loss
 
     def encode(self, inputs):
         """
@@ -76,12 +64,16 @@ class KDForSentEmb(L.LightningModule):
     #     metric_res = compute_metrics(preds, target)
     #     metric_res = {f"{step}/{k}": v for k, v in metric_res.items()}
     #     return metric_res
-'''
+
+    @torch.no_grad()
     def validation_step(self, batch, batch_idx, dataloader_idx=0) -> Tensor:
         res = {}
         batch_size = self.get_batch_size(batch)
-
-        loss, loss_dict = self.shard_step(batch=batch, step=f"val_{dataloader_idx}")
+        outputs = self(batch)
+        loss_dict = outputs.loss_dict
+        loss_dict = {
+            f"val_{dataloader_idx}/{k}": v for k, v in loss_dict.items() if v is not None
+        }
 
         self.log_dict(
             loss_dict,
@@ -90,7 +82,7 @@ class KDForSentEmb(L.LightningModule):
             logger=True,
             sync_dist=True,
         )
-        res["loss"] = loss
+        res["loss"] = outputs.loss
         # validation, STSとかで適当にやる？
         # JSICKかJSTS　MTEBで簡単にできるはず
         # if "model_inputs_gen" in batch:
@@ -101,26 +93,26 @@ class KDForSentEmb(L.LightningModule):
         # if dataloader_idx not in self.validation_step_outputs:
         #     self.validation_step_outputs[dataloader_idx] = []
         self.validation_step_outputs[dataloader_idx].append(res)
-        return loss
+        return outputs.loss
 
-    def on_validation_epoch_end(self):
-        res = {}
-        for (
-            idx,
-            step_outputs,
-        ) in self.validation_step_outputs.items():
-            losses = torch.stack([item["loss"] for item in step_outputs])
-            eval_loss = losses.mean()
-            if "preds" in step_outputs[0]:
-                metric_res = self._compute_metric(step_outputs, step=f"val_{idx}")
-                res.update(metric_res)
-            if self.sampler is not None and idx == 0:
-                self.sampler.update(loss=eval_loss)
-                if self.sampler.sampling_type == "adaptive":
-                    res["adaptive_threshold"] = self.sampler.adaptive_threshold
-        self.log_dict(res, logger=True, sync_dist=True)
-        self.validation_step_outputs.clear()
-'''
+    # def on_validation_epoch_end(self):
+    #     res = {}
+    #     for (
+    #         idx,
+    #         step_outputs,
+    #     ) in self.validation_step_outputs.items():
+    #         losses = torch.stack([item["loss"] for item in step_outputs])
+    #         eval_loss = losses.mean()
+    #         if "preds" in step_outputs[0]:
+    #             metric_res = self._compute_metric(step_outputs, step=f"val_{idx}")
+    #             res.update(metric_res)
+    #         if self.sampler is not None and idx == 0:
+    #             self.sampler.update(loss=eval_loss)
+    #             if self.sampler.sampling_type == "adaptive":
+    #                 res["adaptive_threshold"] = self.sampler.adaptive_threshold
+    #     self.log_dict(res, logger=True, sync_dist=True)
+    #     self.validation_step_outputs.clear()
+
     def on_save_checkpoint(self, checkpoint):
         sd = checkpoint["state_dict"] if "state_dict" in checkpoint else checkpoint
         for key in list(sd.keys()):
@@ -139,11 +131,11 @@ class KDForSentEmb(L.LightningModule):
     def configure_optimizers(self):
         # distilcseからbetaが少し変わっているので注意　https://docs.pytorch.org/docs/stable/generated/torch.optim.AdamW.html
         # original: eps=1e-8, betas=(0.9, 0.98）
-        optim = torch.optim.AdamW(model.parameters(),lr=self.args.lr)
+        optim = torch.optim.AdamW(self.student_model.parameters(),lr=self.args.lr)
         num_training_steps = self.trainer.estimated_stepping_batches
         scheduler = get_scheduler(
             name="cosine",
-            optimizer=optimizer,
+            optimizer=optim,
             num_training_steps=num_training_steps,
             num_warmup_steps=self.args.warmup_ratio * num_training_steps,
         )
@@ -157,4 +149,4 @@ class KDForSentEmb(L.LightningModule):
                 "frequency": 1,
             }
         ]
-        return [optimizer], scheduler
+        return [optim], scheduler

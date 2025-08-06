@@ -5,6 +5,8 @@ This implementation is based on [DistilCSE's](https://github.com/caskcsg/sentemb
 import torch
 import torch.nn.functional as F
 from .base import DistilLoss
+from lightning import LightningModule
+from typing import Dict, Optional
 
 class CKD(DistilLoss):
     def __init__(self, temp: float = 0.05):
@@ -13,6 +15,7 @@ class CKD(DistilLoss):
 
     def forward(
         self,
+        lightning_module: LightningModule,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
     ) -> torch.Tensor:
