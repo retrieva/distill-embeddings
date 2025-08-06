@@ -75,12 +75,9 @@ def main(args):
         args.data_name,
         args.subset_name,
         split='train',
-        streaming=True
     )
-    if args.sample_size:
-        dataset = dataset.take(args.sample_size)
-    logger.info(f"Loaded dataset: {args.data_name} ({args.subset_name}) with {args.sample_size} samples")
-    texts = list(dataset['text'])
+    texts = list(dataset['text'][:args.sample_size]) if args.sample_size else list(dataset['text'])
+    logger.info(f"Loaded dataset: {args.data_name} ({args.subset_name}) with {len(texts)} samples")
     if args.short_text_ratio > 0:
         texts = split_to_short_texts(texts, args.short_text_ratio)
     # 後ろの方にめっちゃ短いの集まってそうなので、削っとく
