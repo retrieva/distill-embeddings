@@ -6,8 +6,9 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "accelerate>=1.9.0",
-    "datasets>=4.0.0",
+    "datasets<4.0.0",
     "lightning>=2.5.2",
+    "mteb>=1.38.33",
     "numpy<2.0.0",
     "sentence-transformers>=5.0.0",
     "sentencepiece>=0.2.0",
