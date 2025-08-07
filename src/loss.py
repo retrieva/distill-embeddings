@@ -31,6 +31,8 @@ class KDLoss(nn.Module):
         self,
         lightning_module: LightningModule,
         batch: Batch,
+        validation: bool = False,
+        **kwargs,
     ) -> LossOutput:
         loss_dict = {}
         student_features = lightning_module.student_model(batch)['sentence_embedding']
@@ -47,6 +49,8 @@ class KDLoss(nn.Module):
             lightning_module=lightning_module,
             projected_features=projected_features,
             teacher_features=teacher_features,
+            validation=validation,
+            **kwargs,
         )
         loss_dict = loss
         return LossOutput(

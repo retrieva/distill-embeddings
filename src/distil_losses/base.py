@@ -13,5 +13,7 @@ class DistilLoss(nn.Module):
         lightning_module: LightningModule,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
+        validation: bool = False,
+        **kwargs,
     ) -> Union[Dict, torch.Tensor]:
         raise NotImplementedError
