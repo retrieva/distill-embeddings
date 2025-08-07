@@ -43,9 +43,9 @@ class KDLoss(nn.Module):
             projected_features=projected_features,
             teacher_features=teacher_features,
         )
-        loss_dict["loss"] = loss
+        loss_dict = loss
         return LossOutput(
-            loss=loss,
+            loss=loss["loss"],
             loss_dict=loss_dict,
         )
 
@@ -53,6 +53,7 @@ class KDLoss(nn.Module):
 def get_loss_fn(args):
     if args.loss_type == "taid":
         distil_loss_fn = TAID(
+            forward_fn=args.taid_forward_fn,
             t_start=args.taid_t_start,
             t_end=args.taid_t_end,
             alpha=args.taid_alpha,
@@ -62,7 +63,7 @@ def get_loss_fn(args):
     elif args.loss_type == "ckd":
         distil_loss_fn = CKD(args.temp)
     elif args.loss_type == "mse":
-        distil_loss_fn = MSE(args.temp)
+        distil_loss_fn = MSE()
     elif args.loss_type == "kld":
         distil_loss_fn = KLD(args.temp)
     else:

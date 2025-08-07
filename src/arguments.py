@@ -26,6 +26,7 @@ def parse_args():
     parser.add_argument("--dataset_name", type=str, required=True, help="name of the dataset")
     parser.add_argument("--num_epochs", type=int, default=5, help="number of epochs")
     parser.add_argument("--val_check_interval", type=float, default=1.0)
+    parser.add_argument("--log_every_n_steps", type=int, default=50, help="log every n steps")
     parser.add_argument(
         "--validate_first", action="store_true", help="run validation before training"
     )
@@ -35,7 +36,7 @@ def parse_args():
     parser.add_argument(
         "--num_workers", type=int, default=4, help="number of workers for data loader"
     )
-    parser.add_argument("--lr", type=float, default=1.0e-4, help="learning rate")
+    parser.add_argument("--lr", type=float, default=1e-5, help="learning rate")
 
     # loss
     parser.add_argument("--loss_type", type=str, required=True, help="loss type")
@@ -74,6 +75,12 @@ def parse_args():
         help="disable the TAID's adaptive update",
     )
     parser.add_argument(
+        "--taid_forward_fn",
+        type=str,
+        default="kld",
+        help="forward function for TAID loss, either 'kld' or 'mse'",
+    )
+    parser.add_argument(
         "--temp",
         type=float,
         default=0.05,
@@ -90,5 +97,8 @@ def parse_args():
         type=int,
         default=4096,
         help="maximum sequence length",
+    )
+    parser.add_argument("--mteb_eval",action="store_true",
+        help="run MTEB evaluation at the end of training",
     )
     return parser.parse_args()
