@@ -9,6 +9,8 @@ from lightning import LightningModule
 from typing import Dict, Optional
 from einops import einsum
 
+
+
 class CKD(DistilLoss):
     """
     Contrastive Knowledge Distillation for sentence embeddings.
@@ -20,30 +22,64 @@ class CKD(DistilLoss):
     def __init__(self, temp: float = 0.02):
         super().__init__()
         self.temp = temp
+        self.teacher_queue = torch.tensor([])  # 教師埋め込みのキュー
+        self.max_queue_len = 0  # キューの最大長
+        # self.max_queue_len = 65536  # キューの最大長
 
-    def _compute_similarity_matrix(self, query_emb: torch.Tensor, key_emb: torch.Tensor) -> torch.Tensor:
-        """共通の類似度行列計算"""
-        return einsum(query_emb, key_emb, 'b d, k d -> b k') / self.temp
+    def make_ckd_features(
+        self,
+        projected_features: torch.Tensor,
+        teacher_features: torch.Tensor,
+        **kwargs,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        生徒と教師の埋め込みを正規化し、類似度行列を計算する関数
+        """
+        # 類似度よりは埋め込みの重みつきわの方が良さそうだから、一旦こうしてみる
+        return projected_features, teacher_features
 
+    def forward_ckd(
+        self,
+        projected_features: torch.Tensor,
+        teacher_features: torch.Tensor,
+        temp: float = 0.02,
+    ) -> torch.Tensor:
+        """
+        対照学習ベースの知識蒸留損失を計算する関数
+        生徒埋め込みが教師埋め込みに最も類似するように学習する。
+        """
+        # 各サンプルのインデックスをラベルとする（対角要素が正解）
+        labels = torch.arange(projected_features.size(0), device=projected_features.device)
+        # 生徒と教師の埋め込みを正規化
+        student_features = F.normalize(projected_features, dim=-1)
+        teacher_features = F.normalize(teacher_features, dim=-1)
+
+        # key = torch.cat([student_features, teacher_features], dim=0)
+        key = torch.cat([teacher_features, self.teacher_queue.to(student_features.device)], dim=0)
+
+        # クエリとキー間の類似度スコアを計算
+        scores = einsum(student_features, key, 'b d, k d -> b k') / temp
+
+        # 対照学習損失：生徒埋め込みが対応する教師埋め込みに最も類似するように学習
+        loss = F.cross_entropy(scores, labels)
+        self.teacher_queue = key[:key.shape[0] - max(key.shape[0] - self.max_queue_len, 0)]
+        self.teacher_queue = self.teacher_queue.detach().cpu()  # 勾配を伝播しないようにする
+        return loss
+    
     def forward(
         self,
         lightning_module: LightningModule,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
-    ) -> torch.Tensor:  
-        # 各サンプルのインデックスをラベルとする（対角要素が正解）
-        labels = torch.arange(projected_features.size(0), device=projected_features.device)
+    ) -> torch.Tensor:
         
-        # 生徒埋め込みをクエリとして使用
-        student_features = F.normalize(projected_features, dim=-1)
-        teacher_features = F.normalize(teacher_features, dim=-1)
-        
-        # 生徒と教師の埋め込みを結合してキーとする
-        key = torch.cat([student_features, teacher_features], dim=0)
-        
-        # クエリとキー間の類似度スコアを計算
-        scores = self._compute_similarity_matrix(student_features, key)
-
-        # 対照学習損失：生徒埋め込みが対応する教師埋め込みに最も類似するように学習
-        loss = F.cross_entropy(scores, labels)
-        return {"loss": loss}
+        projected_features, teacher_features = self.make_ckd_features(
+            projected_features=projected_features,
+            teacher_features=teacher_features,
+        )
+        loss = self.forward_ckd(
+            projected_features,
+            teacher_features,
+            temp=self.temp
+        )
+        return {"loss": loss,"teacher_queue_langth": self.teacher_queue.shape[0]}

@@ -8,6 +8,39 @@ from einops import einsum
 from .base import DistilLoss
 from lightning import LightningModule
 
+def forward_kld(
+    sim_s: torch.Tensor,
+    sim_t: torch.Tensor,
+    temp: float = 2.0,
+) -> torch.Tensor:
+    """
+    KL Divergence Lossを計算する関数
+    """
+    # KLダイバージェンス計算
+    teacher_probs = F.softmax(sim_t, dim=1, dtype=torch.float32)
+    student_log_probs = F.log_softmax(sim_s, dim=1, dtype=torch.float32)
+
+    # KL(teacher || student) を計算
+    kl_loss = F.kl_div(student_log_probs, teacher_probs, reduction='batchmean')
+    kl_loss = kl_loss * (temp ** 2)  # 温度パラメータで調整
+
+    return kl_loss
+
+def make_kld_features(
+    projected_features: torch.Tensor,
+    teacher_features: torch.Tensor,
+    temp: float = 2.0,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    student_features = F.normalize(projected_features, dim=-1)
+    teacher_features = F.normalize(teacher_features, dim=-1)
+
+    # 類似度行列を計算（バッチ内の各文同士の類似度）
+    sim_s = einsum(student_features, student_features, 'b d, k d -> b k') / temp
+    sim_t = einsum(teacher_features, teacher_features, 'b d, k d -> b k') / temp
+
+    return sim_s, sim_t
+
+
 class KLD(DistilLoss):
     """
     Knowledge Distillation using KL Divergence Loss for sentence embeddings.
@@ -20,9 +53,6 @@ class KLD(DistilLoss):
         super().__init__()
         self.temp = temp
 
-    def _compute_similarity_matrix(self, query_emb: torch.Tensor, key_emb: torch.Tensor) -> torch.Tensor:
-        return einsum(query_emb, key_emb, 'b d, k d -> b k') / self.temp
-
     def forward(
         self,
         lightning_module: LightningModule,
@@ -33,20 +63,15 @@ class KLD(DistilLoss):
         # Tempで割った後に、それぞれlog_softmaxもしくはsoftmaxを適用する
         # その後、KLダイバージェンス適用
         # 文埋め込みを正規化
-        student_features = F.normalize(projected_features, dim=-1)
-        teacher_features = F.normalize(teacher_features, dim=-1)
-        # 類似度行列を計算（バッチ内の各文同士の類似度）
-        sim_s = self._compute_similarity_matrix(student_features, student_features)
-        sim_t = self._compute_similarity_matrix(teacher_features, teacher_features)
-
-        # KLダイバージェンス計算
-        # 教師の類似度分布を確率分布に変換
-        teacher_probs = F.softmax(sim_t, dim=1)
-        # 生徒の類似度分布を対数確率分布に変換
-        student_log_probs = F.log_softmax(sim_s, dim=1)
-        
-        # KL(teacher || student) を計算
-        kl_loss = F.kl_div(student_log_probs, teacher_probs, reduction='batchmean')
-        kl_loss = kl_loss * (self.temp ** 2)  # 温度パラメータで調整
+        sim_s, sim_t = make_kld_features(
+            projected_features=projected_features,
+            teacher_features=teacher_features,
+            temp=self.temp,
+        )
+        kl_loss = forward_kld(
+            sim_s=sim_s,
+            sim_t=sim_t,
+            temp=self.temp,
+        )
 
         return {"loss": kl_loss}
