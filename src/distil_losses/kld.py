@@ -1,20 +1,52 @@
 """
 This implementation is based on (https://github.com/UKPLab/sentence-transformers/blob/240cf3053c5d2dc9a04108412e63b57e05f17ff6/sentence_transformers/losses/DistillKLDivLoss.py)
-TODO：実装
 """
 
 import torch
 import torch.nn.functional as F
+from einops import einsum
 from .base import DistilLoss
+from lightning import LightningModule
 
 class KLD(DistilLoss):
-    def __init__(self, temp: float = 0.05):
+    """
+    Knowledge Distillation using KL Divergence Loss for sentence embeddings.
+    
+    バッチ内の文埋め込み同士の類似度分布を教師モデルから生徒モデルに蒸留する。
+    教師と生徒それぞれのバッチ内類似度行列を計算し、その確率分布間のKLダイバージェンスを損失とする。
+    これにより生徒モデルが教師モデルの埋め込み空間構造を学習する。
+    """
+    def __init__(self, temp: float = 2.0):
         super().__init__()
         self.temp = temp
 
+    def _compute_similarity_matrix(self, query_emb: torch.Tensor, key_emb: torch.Tensor) -> torch.Tensor:
+        return einsum(query_emb, key_emb, 'b d, k d -> b k') / self.temp
+
     def forward(
         self,
+        lightning_module: LightningModule,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
     ) -> torch.Tensor:
-        pass
+        # studentとteacherそれぞれで類似度行列を計算
+        # Tempで割った後に、それぞれlog_softmaxもしくはsoftmaxを適用する
+        # その後、KLダイバージェンス適用
+        # 文埋め込みを正規化
+        student_features = F.normalize(projected_features, dim=-1)
+        teacher_features = F.normalize(teacher_features, dim=-1)
+        # 類似度行列を計算（バッチ内の各文同士の類似度）
+        sim_s = self._compute_similarity_matrix(student_features, student_features)
+        sim_t = self._compute_similarity_matrix(teacher_features, teacher_features)
+
+        # KLダイバージェンス計算
+        # 教師の類似度分布を確率分布に変換
+        teacher_probs = F.softmax(sim_t, dim=1)
+        # 生徒の類似度分布を対数確率分布に変換
+        student_log_probs = F.log_softmax(sim_s, dim=1)
+        
+        # KL(teacher || student) を計算
+        kl_loss = F.kl_div(student_log_probs, teacher_probs, reduction='batchmean')
+        kl_loss = kl_loss * (self.temp ** 2)  # 温度パラメータで調整
+
+        return {"loss": kl_loss}

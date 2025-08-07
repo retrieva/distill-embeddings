@@ -7,27 +7,43 @@ import torch.nn.functional as F
 from .base import DistilLoss
 from lightning import LightningModule
 from typing import Dict, Optional
+from einops import einsum
 
 class CKD(DistilLoss):
-    def __init__(self, temp: float = 0.05):
+    """
+    Contrastive Knowledge Distillation for sentence embeddings.
+    
+    対照学習ベースの知識蒸留。生徒モデルの埋め込みが、同じサンプルの教師埋め込みに最も類似するように学習する。
+    バッチ内で生徒埋め込み（クエリ）と、生徒・教師埋め込み（キー）の類似度を計算し、
+    正解ラベル（自分自身のインデックス）でクロスエントロピー損失を適用する。
+    """
+    def __init__(self, temp: float = 0.02):
         super().__init__()
         self.temp = temp
+
+    def _compute_similarity_matrix(self, query_emb: torch.Tensor, key_emb: torch.Tensor) -> torch.Tensor:
+        """共通の類似度行列計算"""
+        return einsum(query_emb, key_emb, 'b d, k d -> b k') / self.temp
 
     def forward(
         self,
         lightning_module: LightningModule,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
-    ) -> torch.Tensor:
-        """
-        Compute the CKD loss using contrastive knowledge distillation.
-        生徒と教師の文埋め込みの類似度を測り、クロスエントロピー損失を計算する
-        同じ文を埋め込んだ時の類似度が高くなるように学習する
-        公式の実装だと、queueに過去のバッチについての教師モデルの埋め込みを保持して、in batch negを増やしている
-        """
+    ) -> torch.Tensor:  
+        # 各サンプルのインデックスをラベルとする（対角要素が正解）
         labels = torch.arange(projected_features.size(0), device=projected_features.device)
-        query = F.normalize(projected_features, dim=-1)
-        key = torch.cat([projected_features, teacher_features], dim=0)
-        scores = torch.einsum('ab,cb->ac', query, key) / self.temp
-        loss = F.cross_entropy(scores, labels.to(scores.device))
-        return loss
+        
+        # 生徒埋め込みをクエリとして使用
+        student_features = F.normalize(projected_features, dim=-1)
+        teacher_features = F.normalize(teacher_features, dim=-1)
+        
+        # 生徒と教師の埋め込みを結合してキーとする
+        key = torch.cat([student_features, teacher_features], dim=0)
+        
+        # クエリとキー間の類似度スコアを計算
+        scores = self._compute_similarity_matrix(student_features, key)
+
+        # 対照学習損失：生徒埋め込みが対応する教師埋め込みに最も類似するように学習
+        loss = F.cross_entropy(scores, labels)
+        return {"loss": loss}

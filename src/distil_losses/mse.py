@@ -5,17 +5,19 @@ TODO：実装
 """
 
 import torch
-import torch.nn.functional as F
+from torch.nn import functional as F
 from .base import DistilLoss
+from lightning import LightningModule
 
 class MSE(DistilLoss):
-    def __init__(self, temp: float = 0.05):
+    def __init__(self):
         super().__init__()
-        self.temp = temp
 
     def forward(
         self,
+        lightning_module: LightningModule,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
     ) -> torch.Tensor:
-        pass
+        loss = F.mse_loss(projected_features, teacher_features)
+        return {"loss": loss}
