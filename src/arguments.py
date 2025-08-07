@@ -36,7 +36,7 @@ def parse_args():
     parser.add_argument(
         "--num_workers", type=int, default=4, help="number of workers for data loader"
     )
-    parser.add_argument("--lr", type=float, default=1e-5, help="learning rate")
+    parser.add_argument("--lr", type=float, default=5e-5, help="learning rate")
 
     # loss
     parser.add_argument("--loss_type", type=str, required=True, help="loss type")
