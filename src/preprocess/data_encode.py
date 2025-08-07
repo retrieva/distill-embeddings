@@ -115,7 +115,6 @@ def main(args):
             show_progress_bar=True, 
             batch_size=args.long_batch_size,
             max_length=args.max_length,
-            normalize_embeddings=True,
         )
         logger.info("-- Short Encode --")
         short_teacher_features = teacher_model.encode(
@@ -123,7 +122,6 @@ def main(args):
             show_progress_bar=True, 
             batch_size=args.short_batch_size,
             max_length=args.max_length,
-            normalize_embeddings=True,
             )
     output_dataset = Dataset.from_dict({
         'text': long_texts + short_texts,

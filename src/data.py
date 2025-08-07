@@ -62,7 +62,7 @@ class DataModuleForDistill(L.LightningDataModule):
 
     def setup(self, stage: str):
         datasets = load_from_disk(self.data_path)
-        self.datasets = datasets.train_test_split(test_size=1000, seed=42, shuffle=True)
+        self.datasets = datasets.train_test_split(test_size=int(min(len(datasets)*0.1, 1000)), seed=42, shuffle=True)
 
     def train_dataloader(self):
         return DataLoader(
