@@ -6,6 +6,7 @@ from src.data import DataModuleForDistill
 from src.model import KDForSentEmb
 from src.arguments import parse_args
 from pathlib import Path
+from lightning.pytorch.callbacks import ModelCheckpoint
 
 if __name__ == "__main__":
     args = parse_args()
@@ -26,26 +27,27 @@ if __name__ == "__main__":
         max_length=args.max_length
     )
     # 実装しなきゃ
-    # modelcheckpoint = ModelCheckpoint(
-    #     dirpath=args.output_dir,
-    #     monitor="val_0/rougeL",
-    #     mode="max",
-    #     save_top_k=1,
-    #     save_last=False,
-    # )
+    modelcheckpoint = ModelCheckpoint(
+        monitor="val_0/loss",
+        mode="max",
+        save_top_k=1,
+        save_last=True,
+    )
     trainer = L.Trainer(
         devices="auto",
         max_epochs=args.num_epochs,
         val_check_interval=args.val_check_interval,
-        precision="bf16-true",
+        log_every_n_steps=args.log_every_n_steps,
+        precision="bf16-mixed",
         num_sanity_val_steps=0,
         # strategy=DeepSpeedStrategy(
         #     stage=2, allgather_bucket_size=5e8, reduce_bucket_size=5e8
         # ),
-        # callbacks=[modelcheckpoint],
+        callbacks=[modelcheckpoint],
         logger=WandbLogger(
             name=os.path.basename(args.output_dir),
             project="distillation",
+            save_dir=args.output_dir,
         ),
     )
     if args.validate_first:
