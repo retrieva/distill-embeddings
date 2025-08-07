@@ -37,6 +37,8 @@ def parse_args():
         "--num_workers", type=int, default=4, help="number of workers for data loader"
     )
     parser.add_argument("--lr", type=float, default=5e-5, help="learning rate")
+    parser.add_argument("--ckd_temp", type=float, default=0.02, help="CKD temperature")
+    parser.add_argument("--kld_temp", type=float, default=2.0, help="KLD temperature")
 
     # loss
     parser.add_argument("--loss_type", type=str, required=True, help="loss type")
@@ -70,21 +72,15 @@ def parse_args():
         help="momentum coeff for TAID's adaptive update",
     )
     parser.add_argument(
+        "--ckd_max_queue_len",
+        type=int,
+        default=65536,
+        help="maximum queue length for CKD (default: 65536, set to 0 to disable queue)",
+    )
+    parser.add_argument(
         "--taid_disable_adaptive",
         action="store_true",
         help="disable the TAID's adaptive update",
-    )
-    parser.add_argument(
-        "--taid_forward_fn",
-        type=str,
-        default="kld",
-        help="forward function for TAID loss, either 'kld' or 'mse'",
-    )
-    parser.add_argument(
-        "--temp",
-        type=float,
-        default=0.05,
-        help="CKD temperature for scaling the logits",
     )
     parser.add_argument(
         "--warmup_ratio",
