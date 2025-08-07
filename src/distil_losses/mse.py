@@ -26,6 +26,7 @@ class MSE(DistilLoss):
         self,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
+        validation: bool = False,
         **kwargs,
     ) -> torch.Tensor:
         """
@@ -39,6 +40,8 @@ class MSE(DistilLoss):
         lightning_module: LightningModule,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
+        validation: bool = False,
+        **kwargs,
     ) -> torch.Tensor:
         
         projected_features, teacher_features = self.make_features(
@@ -46,5 +49,5 @@ class MSE(DistilLoss):
             teacher_features=teacher_features,
         )
         # MSE損失を計算
-        loss,loss_dict = self.compute_loss(projected_features, teacher_features)
+        loss,loss_dict = self.compute_loss(projected_features, teacher_features, validation=validation)
         return loss_dict

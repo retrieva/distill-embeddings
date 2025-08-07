@@ -45,6 +45,8 @@ class CKD(DistilLoss):
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
         temp: float = 0.02,
+        validation: bool = False,
+        **kwargs
     ) -> torch.Tensor:
         """
         対照学習ベースの知識蒸留損失を計算する関数
@@ -64,8 +66,9 @@ class CKD(DistilLoss):
 
         # 対照学習損失：生徒埋め込みが対応する教師埋め込みに最も類似するように学習
         loss = F.cross_entropy(scores, labels)
-        self.teacher_queue = key[:key.shape[0] - max(key.shape[0] - self.max_queue_len, 0)]
-        self.teacher_queue = self.teacher_queue.detach().cpu()  # 勾配を伝播しないようにする
+        if not validation:
+            self.teacher_queue = key[:key.shape[0] - max(key.shape[0] - self.max_queue_len, 0)]
+            self.teacher_queue = self.teacher_queue.detach().cpu()  # 勾配を伝播しないようにする
         return loss, {"loss": loss, "teacher_queue_length": self.teacher_queue.shape[0]}
     
     def forward(
@@ -73,6 +76,8 @@ class CKD(DistilLoss):
         lightning_module: LightningModule,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
+        validation: bool = False,
+        **kwargs,
     ) -> torch.Tensor:
         
         projected_features, teacher_features = self.make_features(
@@ -82,6 +87,7 @@ class CKD(DistilLoss):
         loss, loss_dict = self.compute_loss(
             projected_features,
             teacher_features,
-            temp=self.temp
+            temp=self.temp,
+            validation=validation,
         )
         return loss_dict

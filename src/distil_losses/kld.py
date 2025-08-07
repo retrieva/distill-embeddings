@@ -26,6 +26,8 @@ class KLD(DistilLoss):
         self,
         sim_s: torch.Tensor,
         sim_t: torch.Tensor,
+        validation: bool = False,
+        **kwargs,
     ) -> torch.Tensor:
         """
         KL Divergence Lossを計算する関数
@@ -59,6 +61,8 @@ class KLD(DistilLoss):
         lightning_module: LightningModule,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
+        validation: bool = False,
+        **kwargs,
     ) -> torch.Tensor:
         # studentとteacherそれぞれで類似度行列を計算
         # Tempで割った後に、それぞれlog_softmaxもしくはsoftmaxを適用する
@@ -71,6 +75,7 @@ class KLD(DistilLoss):
         kl_loss,loss_dict = self.compute_loss(
             sim_s=sim_s,
             sim_t=sim_t,
+            validation=validation,
         )
 
         return loss_dict

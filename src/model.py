@@ -32,8 +32,8 @@ class KDForSentEmb(L.LightningModule):
             self.teacher_model_config.hidden_size
         )
 
-    def forward(self, batch: Batch, **kwargs) -> LossOutput:
-        outputs: LossOutput = self.loss_fn(lightning_module=self, batch=batch, **kwargs)
+    def forward(self, batch: Batch, validation:bool = False, **kwargs) -> LossOutput:
+        outputs: LossOutput = self.loss_fn(lightning_module=self, batch=batch, validation=validation, **kwargs)
         return outputs
 
     def get_batch_size(self, batch: Batch) -> int:
@@ -70,7 +70,7 @@ class KDForSentEmb(L.LightningModule):
     def validation_step(self, batch, batch_idx, dataloader_idx=0) -> Tensor:
         res = {}
         batch_size = self.get_batch_size(batch)
-        outputs = self(batch)
+        outputs = self(batch,validation=True)
         loss_dict = outputs.loss_dict
         loss_dict = {
             f"val_{dataloader_idx}/{k}": v for k, v in loss_dict.items() if v is not None

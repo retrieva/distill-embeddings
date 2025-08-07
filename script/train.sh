@@ -16,5 +16,5 @@ uv run python train.py \
     --max_length 4096 \
     --val_check_interval 1 \
     --log_every_n_steps 1 \
-    --mteb_eval \
     --loss_type "$loss_type"
+    # --mteb_eval \
