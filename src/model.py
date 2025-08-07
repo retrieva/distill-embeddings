@@ -122,7 +122,7 @@ class KDForSentEmb(L.LightningModule):
         evaluation = mteb.MTEB(tasks=["AmazonCounterfactualClassification",
                                     "AmazonReviewsClassification",
                                     "LivedoorNewsClustering.v2",
-                                    "MewsC16JaClustering",
+                                    # "MewsC16JaClustering",
                                     "MIRACLReranking",
                                     "NLPJournalAbsIntroRetrieval",
                                     "NLPJournalTitleAbsRetrieval",
@@ -137,6 +137,7 @@ class KDForSentEmb(L.LightningModule):
                                     batch_size=self.args.batch_size, 
                                     num_workers=self.args.num_workers,
                                     overwrite_results=True,
+                                    verbosity=0
                                     )
         mteb_dict = {score.task_name: score.get_score() for score in scores}
         self.log_dict(mteb_dict,logger=True,sync_dist=True)
