@@ -6,7 +6,8 @@
 
 module load cuda cudnn nccl gcc
 
-source venv/bin/activate  # 前段で構築した環境を読み込む
+nvidia-smi
+
 for loss_type in "mse" "kld" "ckd" "taid-ckd" "taid-mse" "taid-kld"; do
     uv run python train.py \
         --student_model cl-nagoya/ruri-v3-pt-30m \
