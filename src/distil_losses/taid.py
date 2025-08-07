@@ -2,20 +2,19 @@ import torch
 import torch.nn.functional as F
 from lightning import LightningModule
 from .base import DistilLoss
-from .mse import forward_mse, make_mse_features
-from .kld import forward_kld, make_kld_features
-# from .ckd import forward_ckd, make_ckd_features
+from typing import Dict, Optional
 
 
 class TAID(DistilLoss):
     def __init__(
         self,
-        forward_fn:str,
+        forward_fn: DistilLoss,
         t_start: float = 0.4,
         t_end: float = 1.0,
         alpha: float = 5e-4,
         beta: float = 0.99,
         disable_adaptive: bool = False,
+        args: Optional[Dict] = None,
     ):
         super().__init__()
         # validation
@@ -37,21 +36,7 @@ class TAID(DistilLoss):
         self.register_buffer(
             "momentum", torch.zeros([], device="cuda", dtype=torch.float32)
         )
-        if forward_fn == "ckd":
-            # self.forward_fn = forward_ckd
-            # self.make_features_fn = make_ckd_features
-            self.forward_fn = forward_mse
-            self.make_features_fn = make_mse_features
-        elif forward_fn == "kld":
-            self.forward_fn = forward_kld
-            self.make_features_fn = make_kld_features
-        elif forward_fn == "mse":
-            self.forward_fn = forward_mse
-            self.make_features_fn = make_mse_features
-        else:
-            raise ValueError(
-                f"Invalid forward_fn: {forward_fn}. Must be one of ['ckd', 'kld', 'mse']"
-            )
+        self.forward_fn = forward_fn
     def update_t(
         self, loss: torch.Tensor, global_step: int, num_train_steps: int
     ) -> torch.Tensor:
@@ -85,14 +70,13 @@ class TAID(DistilLoss):
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
     ):
-        student_features, teacher_features = self.make_features_fn(
+        student_features, teacher_features = self.forward_fn.make_features(
             projected_features=projected_features,
             teacher_features=teacher_features,
-            temp=self.t,
         )
         p_t = (1 - self.t) * student_features.detach() + self.t * teacher_features
-        distil_loss = self.forward_fn(student_features,p_t)
-        return distil_loss
+        distil_loss, loss_dict = self.forward_fn.compute_loss(student_features,p_t)
+        return distil_loss, loss_dict
 
     def forward(
         self,
@@ -101,7 +85,7 @@ class TAID(DistilLoss):
         teacher_features: torch.Tensor,
     ) -> torch.Tensor:
         # compute kd loss
-        loss = self.compute_loss(
+        loss, loss_dict = self.compute_loss(
             projected_features=projected_features,
             teacher_features=teacher_features,
         )
@@ -112,10 +96,7 @@ class TAID(DistilLoss):
             global_step=lightning_module.trainer.global_step,
             num_train_steps=lightning_module.trainer.estimated_stepping_batches,
         )
+        loss_dict["tiki_t"] = self.t
+        loss_dict["delta_t"] = delta_t
 
-        loss_dict = {
-            "loss": loss,
-            "tiki_t": self.t,
-            "delta_t": delta_t,
-        }
         return loss_dict

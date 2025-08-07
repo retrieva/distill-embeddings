@@ -19,14 +19,16 @@ class CKD(DistilLoss):
     バッチ内で生徒埋め込み（クエリ）と、生徒・教師埋め込み（キー）の類似度を計算し、
     正解ラベル（自分自身のインデックス）でクロスエントロピー損失を適用する。
     """
-    def __init__(self, temp: float = 0.02):
+    def __init__(self, args: Optional[Dict] = None):
         super().__init__()
-        self.temp = temp
+        self.temp = args.ckd_temp if hasattr(args, 'ckd_temp') else 0.02
+        self.max_queue_len = args.ckd_max_queue_len if hasattr(args, 'ckd_max_queue_len') else 65536
         self.teacher_queue = torch.tensor([])  # 教師埋め込みのキュー
-        self.max_queue_len = 0  # キューの最大長
+        # self.temp = temp
+        # self.max_queue_len = 0  # キューの最大長
         # self.max_queue_len = 65536  # キューの最大長
 
-    def make_ckd_features(
+    def make_features(
         self,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
@@ -38,7 +40,7 @@ class CKD(DistilLoss):
         # 類似度よりは埋め込みの重みつきわの方が良さそうだから、一旦こうしてみる
         return projected_features, teacher_features
 
-    def forward_ckd(
+    def compute_loss(
         self,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
@@ -64,7 +66,7 @@ class CKD(DistilLoss):
         loss = F.cross_entropy(scores, labels)
         self.teacher_queue = key[:key.shape[0] - max(key.shape[0] - self.max_queue_len, 0)]
         self.teacher_queue = self.teacher_queue.detach().cpu()  # 勾配を伝播しないようにする
-        return loss
+        return loss, {"loss": loss, "teacher_queue_length": self.teacher_queue.shape[0]}
     
     def forward(
         self,
@@ -73,13 +75,13 @@ class CKD(DistilLoss):
         teacher_features: torch.Tensor,
     ) -> torch.Tensor:
         
-        projected_features, teacher_features = self.make_ckd_features(
+        projected_features, teacher_features = self.make_features(
             projected_features=projected_features,
             teacher_features=teacher_features,
         )
-        loss = self.forward_ckd(
+        loss, loss_dict = self.compute_loss(
             projected_features,
             teacher_features,
             temp=self.temp
         )
-        return {"loss": loss,"teacher_queue_langth": self.teacher_queue.shape[0]}
+        return loss_dict

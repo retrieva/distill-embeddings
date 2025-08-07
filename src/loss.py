@@ -7,6 +7,11 @@ from lightning import LightningModule
 from src.distil_losses import *
 from src.data import Batch
 
+taid_forward_fn_map = {
+    "ckd": CKD,
+    "kld": KLD,
+    "mse": MSE,
+}
 
 @dataclass
 class LossOutput:
@@ -51,9 +56,10 @@ class KDLoss(nn.Module):
 
 
 def get_loss_fn(args):
-    if args.loss_type == "taid":
+    if "taid-" in args.loss_type:
+        taid_forward_fn = args.loss_type.split("-")[1]
         distil_loss_fn = TAID(
-            forward_fn=args.taid_forward_fn,
+            forward_fn=taid_forward_fn_map[taid_forward_fn](args),
             t_start=args.taid_t_start,
             t_end=args.taid_t_end,
             alpha=args.taid_alpha,
@@ -61,11 +67,11 @@ def get_loss_fn(args):
             disable_adaptive=args.taid_disable_adaptive,
         )
     elif args.loss_type == "ckd":
-        distil_loss_fn = CKD(args.temp)
+        distil_loss_fn = CKD(args)
     elif args.loss_type == "mse":
-        distil_loss_fn = MSE()
+        distil_loss_fn = MSE(args)
     elif args.loss_type == "kld":
-        distil_loss_fn = KLD(args.temp)
+        distil_loss_fn = KLD(args)
     else:
         raise NotImplementedError(args.loss_type)
 
