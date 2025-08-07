@@ -6,6 +6,7 @@ from transformers import get_scheduler, AutoConfig
 from src.loss import get_loss_fn, LossOutput
 from sentence_transformers import SentenceTransformer
 from src.data import Batch
+import mteb
 
 class KDForSentEmb(L.LightningModule):
     def __init__(self, args):
@@ -113,11 +114,39 @@ class KDForSentEmb(L.LightningModule):
     #     self.log_dict(res, logger=True, sync_dist=True)
     #     self.validation_step_outputs.clear()
 
+    def on_train_epoch_end(self):
+        if not self.args.mteb_eval:
+            return
+        # MTEB evaluation
+        output_folder = self.args.output_dir / "mteb_eval"
+        evaluation = mteb.MTEB(tasks=["AmazonCounterfactualClassification",
+                                    "AmazonReviewsClassification",
+                                    "LivedoorNewsClustering.v2",
+                                    "MewsC16JaClustering",
+                                    "MIRACLReranking",
+                                    "NLPJournalAbsIntroRetrieval",
+                                    "NLPJournalTitleAbsRetrieval",
+                                    "NLPJournalTitleIntroRetrieval",
+                                    "JSICK",
+                                    "JSTS"],
+                                    task_langs=["jpn"],)
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            scores = evaluation.run(self.student_model, output_folder=output_folder,
+                                    batch_size=self.args.batch_size, 
+                                    num_workers=self.args.num_workers,
+                                    overwrite_results=True,
+                                    )
+        mteb_dict = {score.task_name: score.get_score() for score in scores}
+        self.log_dict(mteb_dict,logger=True,sync_dist=True)
+        self.print(f"MTEB evaluation results: {mteb_dict}")
+
+    # def on_save_checkpoint(self, trainer: L.Trainer, lightning_module: L.LightningModule, checkpoint: Dict[str, Any]):
     def on_save_checkpoint(self, checkpoint):
-        sd = checkpoint["state_dict"] if "state_dict" in checkpoint else checkpoint
-        for key in list(sd.keys()):
-            if "teacher_model." in key:
-                del sd[key]
+        checkpoint["teacher_model_name"] = self.args.teacher_model
+        checkpoint["student_model_name"] = self.args.student_model
+        checkpoint["code_name"] = self.args.output_dir.name
 
     def on_load_checkpoint(self, checkpoint: Dict[str, Any]):
         sd = self.state_dict()
