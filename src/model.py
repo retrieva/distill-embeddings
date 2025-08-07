@@ -119,16 +119,18 @@ class KDForSentEmb(L.LightningModule):
             return
         # MTEB evaluation
         output_folder = self.args.output_dir / "mteb_eval"
-        evaluation = mteb.MTEB(tasks=["AmazonCounterfactualClassification",
-                                    "AmazonReviewsClassification",
-                                    "LivedoorNewsClustering.v2",
-                                    # "MewsC16JaClustering",
-                                    "MIRACLReranking",
-                                    "NLPJournalAbsIntroRetrieval",
-                                    "NLPJournalTitleAbsRetrieval",
-                                    "NLPJournalTitleIntroRetrieval",
-                                    "JSICK",
-                                    "JSTS"],
+        evaluation = mteb.MTEB(tasks=[
+            # "AmazonCounterfactualClassification",
+            # "AmazonReviewsClassification",
+            # "LivedoorNewsClustering.v2",
+            # "MewsC16JaClustering",
+            # "MIRACLReranking",
+            # "NLPJournalAbsIntroRetrieval",
+            # "NLPJournalTitleAbsRetrieval",
+            # "NLPJournalTitleIntroRetrieval",
+            "JSICK",
+            "JSTS"
+                                    ],
                                     task_langs=["jpn"],)
         import warnings
         with warnings.catch_warnings():
