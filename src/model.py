@@ -137,10 +137,10 @@ class KDForSentEmb(L.LightningModule):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 scores = evaluation.run(self.student_model, output_folder=output_folder,
-                                        batch_size=self.args.batch_size, 
                                         num_workers=self.args.num_workers,
                                         overwrite_results=True,
-                                        verbosity=0
+                                        verbosity=0,
+                                        encode_kwargs={"batch_size": self.args.batch_size},
                                         )
             mteb_dict = {score.task_name: score.get_score() for score in scores}
             self.log_dict(mteb_dict,logger=True,sync_dist=True)

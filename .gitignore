@@ -9,6 +9,7 @@ output/
 output
 data
 wandb/
+logs
 
 # C extensions
 *.so
