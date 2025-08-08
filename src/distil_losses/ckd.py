@@ -24,9 +24,6 @@ class CKD(DistilLoss):
         self.temp = args.ckd_temp if hasattr(args, 'ckd_temp') else 0.02
         self.max_queue_len = args.ckd_max_queue_len if hasattr(args, 'ckd_max_queue_len') else 65536
         self.teacher_queue = torch.tensor([])  # 教師埋め込みのキュー
-        # self.temp = temp
-        # self.max_queue_len = 0  # キューの最大長
-        # self.max_queue_len = 65536  # キューの最大長
 
     def make_features(
         self,
@@ -38,7 +35,10 @@ class CKD(DistilLoss):
         生徒と教師の埋め込みを正規化し、類似度行列を計算する関数
         """
         # 類似度よりは埋め込みの重みつきわの方が良さそうだから、一旦こうしてみる
-        return projected_features, teacher_features
+        # ここでやっとかないとTAIDで混ぜる時にNormの違いが影響しちゃいそう
+        student_features = F.normalize(projected_features, dim=-1)
+        teacher_features = F.normalize(teacher_features, dim=-1)
+        return student_features, teacher_features
 
     def compute_loss(
         self,
@@ -55,12 +55,13 @@ class CKD(DistilLoss):
         # 各サンプルのインデックスをラベルとする（対角要素が正解）
         labels = torch.arange(projected_features.size(0), device=projected_features.device)
         # 生徒と教師の埋め込みを正規化
+        # ２回やっちゃっても結果は一緒のはず
         student_features = F.normalize(projected_features, dim=-1)
         teacher_features = F.normalize(teacher_features, dim=-1)
 
         key = torch.cat([teacher_features, self.teacher_queue.to(student_features.device)], dim=0)
 
-        # クエリとキー間の類似度スコアを計算
+        # クエリとキー間の類似度スコアを計算 ab,cb->ac
         scores = einsum(student_features, key, 'b d, k d -> b k') / temp
 
         # 対照学習損失：生徒埋め込みが対応する教師埋め込みに最も類似するように学習

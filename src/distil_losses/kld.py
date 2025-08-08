@@ -35,7 +35,6 @@ class KLD(DistilLoss):
         # KLダイバージェンス計算
         teacher_probs = F.softmax(sim_t, dim=1, dtype=torch.float32)
         student_log_probs = F.log_softmax(sim_s, dim=1, dtype=torch.float32)
-
         # KL(teacher || student) を計算
         kl_loss = F.kl_div(student_log_probs, teacher_probs, reduction='batchmean')
         kl_loss = kl_loss * (self.temp ** 2)  # 温度パラメータで調整
