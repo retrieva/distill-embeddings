@@ -58,7 +58,6 @@ class CKD(DistilLoss):
         student_features = F.normalize(projected_features, dim=-1)
         teacher_features = F.normalize(teacher_features, dim=-1)
 
-        # key = torch.cat([student_features, teacher_features], dim=0)
         key = torch.cat([teacher_features, self.teacher_queue.to(student_features.device)], dim=0)
 
         # クエリとキー間の類似度スコアを計算
