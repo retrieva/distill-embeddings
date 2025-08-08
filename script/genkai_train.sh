@@ -18,7 +18,7 @@ for loss_type in "taid-ckd"; do
         --output_dir output \
         --batch_size 128 \
         --num_epochs 3 \
-        --max_length 4096 \
+        --max_length 1024 \
         --val_check_interval 0.1 \
         --log_every_n_steps 1 \
         --lr 1e-05 \
