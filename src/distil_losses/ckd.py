@@ -42,7 +42,7 @@ class CKD(DistilLoss):
 
     def compute_loss(
         self,
-        projected_features: torch.Tensor,
+        student_features: torch.Tensor,
         teacher_features: torch.Tensor,
         temp: float = 0.02,
         validation: bool = False,
@@ -53,10 +53,10 @@ class CKD(DistilLoss):
         生徒埋め込みが教師埋め込みに最も類似するように学習する。
         """
         # 各サンプルのインデックスをラベルとする（対角要素が正解）
-        labels = torch.arange(projected_features.size(0), device=projected_features.device)
+        labels = torch.arange(student_features.size(0), device=student_features.device)
         # 生徒と教師の埋め込みを正規化
         # ２回やっちゃっても結果は一緒のはず
-        student_features = F.normalize(projected_features, dim=-1)
+        student_features = F.normalize(student_features, dim=-1)
         teacher_features = F.normalize(teacher_features, dim=-1)
 
         key = torch.cat([teacher_features, self.teacher_queue.to(student_features.device)], dim=0)
