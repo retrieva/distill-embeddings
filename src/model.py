@@ -121,7 +121,7 @@ class KDForSentEmb(L.LightningModule):
             # MTEB evaluation
             output_folder = self.args.output_dir / "mteb_eval"
             evaluation = mteb.MTEB(tasks=[
-                # "AmazonCounterfactualClassification",
+                "AmazonCounterfactualClassification",
                 # "AmazonReviewsClassification",
                 # "LivedoorNewsClustering.v2",
                 # "MewsC16JaClustering",
