@@ -22,5 +22,6 @@ for loss_type in "ckd" "taid-ckd"; do
         --val_check_interval 0.1 \
         --log_every_n_steps 1 \
         --mteb_eval \
+        --taid_t_start 0.2 \
         --loss_type "$loss_type"
 done
