@@ -11,7 +11,7 @@ export SSL_CERT_FILE=$(uv run python -c "import certifi; print(certifi.where())"
 
 for loss_type in "ckd" "taid-ckd"; do
     uv run python train.py \
-        --student_model cl-nagoya/ruri-v3-pt-30m \
+        --student_model sbintuitions/modernbert-ja-30m \
         --teacher_model Qwen/Qwen3-Embedding-4B \
         --data_dir data \
         --dataset_name sample_10BT_100000 \
