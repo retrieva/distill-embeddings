@@ -17,11 +17,11 @@ def main(args):
         # 2. SentenceTransformerモデルを直接ロード
         model = SentenceTransformer(model_name)
         output_folder = Path("output") / model_name.replace("/", "_")
-    evaluation = mteb.MTEB(tasks=["AmazonCounterfactualClassification",
-                                # "AmazonReviewsClassification",
-                                # "LivedoorNewsClustering.v2",
-                                # "MewsC16JaClustering",
-                                # "MIRACLReranking",
+    evaluation = mteb.MTEB(tasks=[
+                                # "JapaneseSentimentClassification",
+                                "AmazonReviewsClassification",
+                                "LivedoorNewsClustering.v2",
+                                "JaGovFaqsRetrieval",
                                 "NLPJournalAbsIntroRetrieval",
                                 "NLPJournalTitleAbsRetrieval",
                                 "NLPJournalTitleIntroRetrieval",
