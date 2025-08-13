@@ -10,5 +10,6 @@ nvidia-smi
 uv sync
 for model_name in "answerdotai/ModernBERT-base" "answerdotai/ModernBERT-large"; do
     uv run python eval.py \
-        --model_name $model_name
+        --model_name $model_name \
+        --batch_size 64
 done
