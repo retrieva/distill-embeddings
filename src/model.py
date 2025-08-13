@@ -41,7 +41,7 @@ class KDForSentEmb(L.LightningModule):
         return outputs
 
     def get_batch_size(self, batch: Batch) -> int:
-        return batch["anc"]["input_ids"].size(0)
+        return batch["input_ids"].size(0)
 
     def training_step(self, batch: Batch, batch_idx) -> Tensor:
         batch_size = self.get_batch_size(batch)

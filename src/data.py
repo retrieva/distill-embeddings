@@ -14,7 +14,9 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 class Batch:
     input_ids: torch.Tensor
     attention_mask: torch.Tensor
+    pos: dict[str, torch.Tensor]
     teacher_features: torch.Tensor
+    pos_features: torch.Tensor
 
 class DataCollatorForDistill:
     def __init__(self, tokenizer: PreTrainedTokenizer, max_length: int = 4096):
@@ -34,9 +36,26 @@ class DataCollatorForDistill:
         texts = [s["text"] for s in samples]
         teacher_features = [torch.Tensor(s["teacher_features"]) for s in samples]
         inputs = self.preprocess(texts)
-        return {"input_ids": inputs["input_ids"], "attention_mask": inputs["attention_mask"], "teacher_features": teacher_features}
 
-
+        return {"input_ids": inputs["input_ids"],
+                "attention_mask": inputs["attention_mask"],
+                "teacher_features": teacher_features,
+            }
+class DataCollatorForContrastiveDistill(DataCollatorForDistill):
+    def __call__(self, samples):
+        anc_text = [s["anc"] for s in samples]
+        pos_text = [s["pos"] for s in samples]
+        anc_features = [torch.Tensor(s["anc_features"]) for s in samples]
+        pos_features = [torch.Tensor(s["pos_features"]) for s in samples]
+        anc_inputs = self.preprocess(anc_text)
+        pos_inputs = self.preprocess(pos_text)
+        return {"input_ids": anc_inputs["input_ids"],
+                "attention_mask": anc_inputs["attention_mask"],
+                "pos": pos_inputs,
+                "teacher_features": anc_features,
+                "pos_features": pos_features
+            }
+    
 class DataModuleForDistill(L.LightningDataModule):
     def __init__(
         self,
@@ -53,11 +72,17 @@ class DataModuleForDistill(L.LightningDataModule):
         self.eval_batch_size = eval_batch_size if eval_batch_size else batch_size
         self.num_workers = num_workers
         self.tokenizer = student_tokenizer
-
-        self.collate_fn = DataCollatorForDistill(
-            tokenizer=self.tokenizer,
-            max_length=max_length,
-        )
+        
+        if "triplet" in self.data_path:
+            self.collate_fn = DataCollatorForContrastiveDistill(
+                tokenizer=self.tokenizer,
+                max_length=max_length,
+            )
+        else:
+            self.collate_fn = DataCollatorForDistill(
+                tokenizer=self.tokenizer,
+                max_length=max_length,
+            )
         self.datasets = {}
 
     def setup(self, stage: str):
