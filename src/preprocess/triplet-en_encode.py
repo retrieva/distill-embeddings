@@ -158,7 +158,7 @@ def main(args):
     # 出力パスとチェックポイントパスの設定
     output_path = Path(args.output_dir) / f"{args.teacher_model.replace('/', '_')}_encoded" / (f"{args.sample_size}" if args.sample_size else 'full')
     checkpoint_dir = output_path / "checkpoints"
-    with open(output_path / "dataset_summary.json", "r") as f:
+    with open(args.output_dir / "dataset_summary.json", "r") as f:
         dataset_summary = json.load(f)
     for unuse_subset in UNUSED_SUBSET:
         try:
