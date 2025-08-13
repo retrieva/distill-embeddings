@@ -1,14 +1,31 @@
-from datasets import Dataset, load_dataset, get_dataset_config_names,get_dataset_config_info,concatenate_datasets
+from datasets import Dataset,concatenate_datasets
 import argparse
 from sentence_transformers import SentenceTransformer
-import random
 from pathlib import Path
 import torch
 import numpy as np
 import json
 import logging
+import pickle
 import os
+from tqdm import tqdm
 import pandas as pd
+
+UNUSED_SUBSET=["altlex",
+               "WikiAnswers",
+               "S2ORC_citations_titles",
+               "specter_train_triples",
+               "yahoo_answers_question_answer",
+               "yahoo_answers_title_question",
+               "cnn_dailymail_splitted",
+               "S2ORC_citations_abstracts",
+
+               "msmarco-triples",
+               "quora_duplicates",
+               "quora_duplicates_triplets",
+               "PAQ_pairs",
+               "flickr30k_captions"
+               ]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,140 +48,224 @@ def stat_text_lengths(texts):
 
 def flatten_dataset_batch(batch, indices, subset):
     results = {"text": [], "subset": [], "id": [], "column": [], "len": []}
-    
+    columns = ["anc", "pos"]
     for i, idx in enumerate(indices):
-        for column in ["anc", "pos"]:
+        for column in columns:
             text = batch[column][i] if column in batch else ""
             results["text"].append(text)
             results["subset"].append(subset)
             results["id"].append(idx)
             results["column"].append(column)
             results["len"].append(len(text))
-    
     return results
 
+def save_checkpoint(features, batch_idx, checkpoint_path):
+    """チェックポイントを保存"""
+    checkpoint_data = {
+        'features': features,
+        'batch_idx': batch_idx
+    }
+    with open(checkpoint_path, 'wb') as f:
+        pickle.dump(checkpoint_data, f)
+    logger.info(f"Checkpoint saved: batch {batch_idx}, features shape: {np.array(features).shape}")
+
+def load_checkpoint(checkpoint_path):
+    """チェックポイントを読み込み"""
+    if os.path.exists(checkpoint_path):
+        with open(checkpoint_path, 'rb') as f:
+            data = pickle.load(f)
+        logger.info(f"Checkpoint loaded: batch {data['batch_idx']}, features shape: {np.array(data['features']).shape}")
+        return data['features'], data['batch_idx']
+    return [], 0
+
+def encode_with_checkpoint(model, texts, batch_size, checkpoint_path, max_length=None):
+    """チェックポイント機能付きエンコーディング"""
+    checkpoint_path = Path(checkpoint_path)
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # チェックポイントから復元
+    all_features, start_batch = load_checkpoint(checkpoint_path)
+    
+    total_batches = (len(texts) + batch_size - 1) // batch_size
+    
+    if start_batch > 0:
+        logger.info(f"Resuming from batch {start_batch}/{total_batches}")
+    
+    for batch_idx in tqdm(range(start_batch, total_batches), desc="Encoding", initial=start_batch, total=total_batches):
+        start_idx = batch_idx * batch_size
+        end_idx = min(start_idx + batch_size, len(texts))
+        batch_texts = texts[start_idx:end_idx]
+        
+        batch_features = model.encode(
+            batch_texts,
+            batch_size=len(batch_texts),
+            max_length=max_length,
+            normalize_embeddings=True,
+            show_progress_bar=False
+        )
+        all_features.extend(batch_features)
+        
+        # 定期的にチェックポイント保存（100バッチごと）
+        if (batch_idx + 1) % 100 == 0:
+            save_checkpoint(all_features, batch_idx + 1, checkpoint_path)
+    
+    # 完了時にチェックポイントファイルを削除
+    if checkpoint_path.exists():
+        os.remove(checkpoint_path)
+        logger.info("Processing completed. Checkpoint file removed.")
+    
+    return np.array(all_features)
+
+def reconstruct_dataset(encoded_dataset):
+    """
+    エンコードされたデータセットを元のanc/pos形式に戻す
+    """
+    # IDでグループ化
+    grouped = {}
+    for i, example in enumerate(encoded_dataset):
+        key = (example["subset"], example["id"])
+        if key not in grouped:
+            grouped[key] = {}
+        
+        column = example["column"]
+        grouped[key][column] = {
+            "text": example["text"],
+            "teacher_features": example["teacher_features"]
+        }
+    
+    # 元の形式に再構築
+    reconstructed_data = {
+        "anc": [],
+        "pos": [],
+        "anc_features": [],
+        "pos_features": [],
+        "subset": [],
+        "id": []
+    }
+    
+    for (subset, example_id), columns in grouped.items():
+        if "anc" in columns and "pos" in columns:
+            reconstructed_data["anc"].append(columns["anc"]["text"])
+            reconstructed_data["pos"].append(columns["pos"]["text"])
+            reconstructed_data["anc_features"].append(columns["anc"]["teacher_features"])
+            reconstructed_data["pos_features"].append(columns["pos"]["teacher_features"])
+            reconstructed_data["subset"].append(subset)
+            reconstructed_data["id"].append(example_id)
+
+    return Dataset.from_dict(reconstructed_data)
+
 def main(args):
-    # Load a dataset from the Hugging Face Hub
-    raw_data_dir = f"{args.output_dir}/raw"
-    dataset_summary = {}
-    
-    for path in os.listdir(raw_data_dir):
-        if path.endswith(".jsonl"):
-            data_name = path.split(".")[0]
-            
-            # 1. 一度に全ファイルを読み込む代わりに、ストリーミング処理
-            # 2. pandas DataFrame の代わりに辞書のリストで処理
-            output_data = []
-            
-            with open(f"{raw_data_dir}/{path}", 'r', encoding='utf-8') as f:
-                first_line = json.loads(f.readline().strip())
-                f.seek(0)  # ファイルの先頭に戻る
-                
-                # データ形式を判定
-                if isinstance(first_line, dict):
-                    data_keys = set(first_line.keys())
-                    
-                    # 3. バッチ処理でメモリ効率を改善
-                    batch_size = 10000
-                    batch = []
-                    
-                    for line in f:
-                        item = json.loads(line.strip())
-                        batch.append(item)
-                        
-                        if len(batch) >= batch_size:
-                            output_data.extend(process_batch(batch, data_keys))
-                            batch = []
-                        if len(output_data) > 1_000_000:
-                            logger.warning(f"多すぎるので終わり！")
-                            break
-                    # 残りのバッチを処理
-                    if batch:
-                        output_data.extend(process_batch(batch, data_keys))
-                        
-                elif isinstance(first_line, (list, tuple)):
-                    for line in f:
-                        item = json.loads(line.strip())
-                        processed_item = {
-                            "anc": item[0], 
-                            "pos": item[1], 
-                            **({"neg": item[2]} if len(item) > 2 else {})
-                        }
-                        output_data.append(processed_item)
-                else:
-                    raise ValueError(f"Unexpected data format: {type(first_line)}")
-            
-            # 4. pandas DataFrame作成を最後に1回だけ
-            output_df = pd.DataFrame(output_data)
-            
-            dataset_summary[data_name] = {
-                "len": len(output_df),
-                "keys": list(output_df.columns),  # data.keys() ではなく columns を使用
-                "sample": output_df.head(10).to_dict(orient="records")
-            }
-            
-            logger.info(f"Processed {data_name}: {len(output_df)} records")
-            if len(output_df) > 1_000_000:
-                output_df = output_df.sample(n=1_000_000, random_state=42)
-            output_df.to_json(f"{args.output_dir}/{data_name}.jsonl", orient="records", lines=True, force_ascii=False)
+    # 出力パスとチェックポイントパスの設定
+    output_path = Path(args.output_dir) / f"{args.teacher_model.replace('/', '_')}_encoded" / (f"{args.sample_size}" if args.sample_size else 'full')
+    checkpoint_dir = output_path / "checkpoints"
+    with open(output_path / "dataset_summary.json", "r") as f:
+        dataset_summary = json.load(f)
+    for unuse_subset in UNUSED_SUBSET:
+        try:
+            del dataset_summary[unuse_subset]
+        except KeyError:
+            pass
+    print("use these subsets",dataset_summary.keys())
+    subset_to_num_examples = {}
+    subset_to_target_num_examples = {}
+    for subset, info in dataset_summary.items():
+        subset_to_num_examples[subset] = max(info["len"], 1_000_000)
+    total_num_examples = sum(subset_to_num_examples.values())
+    down_sampling_ratio = args.sample_size / total_num_examples if total_num_examples > 0 else 0
+    subset_to_target_num_examples = {subset: int(num_examples * down_sampling_ratio) for subset, num_examples in subset_to_num_examples.items()}
+    print(subset_to_target_num_examples)
+    encode_datasets=[]
+    for subset in subset_to_target_num_examples.keys():
+        dataset = pd.read_json(f"{args.output_dir}/{subset}.jsonl",orient="records",lines=True)
+        dataset = dataset.shuffle(seed=42).select(range(subset_to_target_num_examples[subset]))
+        encode_dataset = dataset.map(
+            flatten_dataset_batch, 
+            with_indices=True, 
+            remove_columns=dataset.column_names,
+            num_proc=4,
+            fn_kwargs={"subset": subset},
+            batched=True  # バッチ処理で効率化
+        )
+        logger.info(f"Loaded dataset: {args.data_name} ({subset}) with {len(encode_dataset)} samples")
+        encode_datasets.append(encode_dataset)
+    encode_dataset = concatenate_datasets(encode_datasets)
+    encode_dataset = encode_dataset.sort("len", reverse=True)
+    # Print statistics about the distribution of text lengths
+    stats = stat_text_lengths(encode_dataset["text"])
+    logger.info(f"Text length statistics: {stats}")
+    long_texts = encode_dataset.filter(lambda x: len(x["text"]) > args.threshold)
+    short_texts = encode_dataset.filter(lambda x: len(x["text"]) <= args.threshold)
+    teacher_model = SentenceTransformer(args.teacher_model).bfloat16()
+    logger.info(f"Loaded teacher model: {args.teacher_model}")
 
-    # 5. 一度だけファイルに書き込み
-    with open(f"{args.output_dir}/dataset_summary.json", "w", encoding='utf-8') as f:
-        json.dump(dataset_summary, f, indent=2, ensure_ascii=False)
+    with torch.no_grad():
+        logger.info("-- Check OOM --")
+        teacher_model.encode(
+            long_texts["text"][:2],
+            show_progress_bar=True, 
+            batch_size=args.long_batch_size,
+            max_length=args.max_length,
+            normalize_embeddings=True,
+        )
+        teacher_model.encode(
+            short_texts["text"][:32],
+            show_progress_bar=True, 
+            batch_size=args.short_batch_size,
+            max_length=args.max_length,
+            normalize_embeddings=True,
+        )
+        logger.info("-- Long Encode --")
+        # チェックポイント機能付きエンコーディング
+        long_teacher_features = encode_with_checkpoint(
+            teacher_model,
+            long_texts["text"],
+            args.long_batch_size,
+            checkpoint_dir / "long_checkpoint.pkl",
+            args.max_length
+        )
+        logger.info("-- Short Encode --")
+        short_teacher_features = encode_with_checkpoint(
+            teacher_model,
+            short_texts["text"],
+            args.short_batch_size,
+            checkpoint_dir / "short_checkpoint.pkl",
+            args.max_length
+        )
+    # add_columnの代わりにfrom_dictを使用
+    long_dataset = Dataset.from_dict({
+        **long_texts.to_dict(),
+        'teacher_features': long_teacher_features
+    })
+    short_dataset = Dataset.from_dict({
+        **short_texts.to_dict(),
+        'teacher_features': short_teacher_features
+    })
+    output_dataset = concatenate_datasets([long_dataset, short_dataset])
     
-    print(json.dumps(dataset_summary, indent=2, ensure_ascii=False))
+    # 元の形式に再構築
+    reconstructed_dataset = reconstruct_dataset(output_dataset)
 
-def process_batch(batch, data_keys):
-    """バッチ処理用の関数"""
-    processed_batch = []
+    output_path.mkdir(parents=True, exist_ok=True)
+    reconstructed_dataset.save_to_disk(output_path)
+    json.dump(stats, open(output_path / "stats.json", "w"), indent=4)
     
-    if data_keys == {"set"}:
-        for item in batch:
-            set_items = item["set"]
-            for i in range(len(set_items) // 2):
-                processed_batch.append({
-                    "anc": set_items[i],
-                    "pos": set_items[i+1],
-                })
-    elif data_keys == {"query", "pos"}:
-        for item in batch:
-            anc = item["query"]
-            for pos in item["pos"]:
-                processed_batch.append({
-                    "anc": anc, 
-                    "pos": pos, 
-                })
-    elif data_keys == {"query", "pos", "neg"}:
-        for item in batch:
-            anc = item["query"]
-            pos_list = item["pos"]
-            neg_list = item["neg"]
-            for i, pos in enumerate(pos_list):
-                processed_batch.append({
-                    "anc": anc, 
-                    "pos": pos, 
-                    "neg": neg_list[min(i, len(neg_list)-1)]
-                })
-    else:
-        raise ValueError(f"Unexpected keys in data: {data_keys}")
+    # チェックポイントディレクトリをクリーンアップ
+    if checkpoint_dir.exists():
+        import shutil
+        shutil.rmtree(checkpoint_dir)
     
-    return processed_batch
+    logger.info(f"Processing completed. Output saved to {output_path}")
 
-'''
-Pairs: ["text1", "text2"] - This is a positive pair that should be close in vector space.
-Triplets: ["anchor", "positive", "negative"] - This is a triplet: The positive text should be close to the anchor, while the negative text should be distant to the anchor.
-Sets: {"set": ["text1", "text2", ...]} A set of texts describing the same thing, e.g. different paraphrases of the same question, different captions for the same image. Any combination of the elements is considered as a positive pair.
-Query-Pairs: {"query": "text", "pos": ["text1", "text2", ...]} A query together with a set of positive texts. Can be formed to a pair ["query", "positive"] by randomly selecting a text from pos.
-Query-Triplets: {"query": "text", "pos": ["text1", "text2", ...], "neg": ["text1", "text2", ...]} A query together with a set of positive texts and negative texts. Can be formed to a triplet ["query", "positive", "negative"] by randomly selecting a text from pos and neg.
-'''
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Load and print samples from a dataset.")
     parser.add_argument("--output_dir", type=str, default="data/triplet-en", help="Path to save the output directory")
     parser.add_argument("--teacher_model", type=str, default="Qwen/Qwen3-Embedding-4B", help="Path to the teacher model")
-    parser.add_argument("--sample_size", type=int, default=100_000_000, help="Number of samples to load")
+    # parser.add_argument("--sample_size", type=int, default=1_000, help="Number of samples to load")
+    parser.add_argument("--sample_size", type=int, default=1_000_000, help="Number of samples to load")
     parser.add_argument("--long_batch_size", type=int, default=1, help="Batch size for processing long texts")
     parser.add_argument("--short_batch_size", type=int, default=32, help="Batch size for processing short texts")
     parser.add_argument("--max_length", type=int, default=None, help="Maximum length for tokenization")
     parser.add_argument("--threshold", type=int, default=4096, help="Threshold for distinguishing long and short texts 文字数なのに注意")
     args = parser.parse_args()
     main(args)
+
