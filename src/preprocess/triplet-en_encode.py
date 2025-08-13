@@ -158,7 +158,7 @@ def main(args):
     # 出力パスとチェックポイントパスの設定
     output_path = Path(args.output_dir) / f"{args.teacher_model.replace('/', '_')}_encoded" / (f"{args.sample_size}" if args.sample_size else 'full')
     checkpoint_dir = output_path / "checkpoints"
-    with open(args.output_dir / "dataset_summary.json", "r") as f:
+    with open(Path(args.output_dir) / "dataset_summary.json", "r") as f:
         dataset_summary = json.load(f)
     for unuse_subset in UNUSED_SUBSET:
         try:
@@ -177,6 +177,7 @@ def main(args):
     encode_datasets=[]
     for subset in subset_to_target_num_examples.keys():
         dataset = pd.read_json(f"{args.output_dir}/{subset}.jsonl",orient="records",lines=True)
+        dataset = Dataset.from_pandas(dataset)
         dataset = dataset.shuffle(seed=42).select(range(subset_to_target_num_examples[subset]))
         encode_dataset = dataset.map(
             flatten_dataset_batch, 
@@ -186,7 +187,7 @@ def main(args):
             fn_kwargs={"subset": subset},
             batched=True  # バッチ処理で効率化
         )
-        logger.info(f"Loaded dataset: {args.data_name} ({subset}) with {len(encode_dataset)} samples")
+        logger.info(f"Loaded dataset: {subset} with {len(encode_dataset)} samples")
         encode_datasets.append(encode_dataset)
     encode_dataset = concatenate_datasets(encode_datasets)
     encode_dataset = encode_dataset.sort("len", reverse=True)
