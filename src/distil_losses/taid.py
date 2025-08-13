@@ -69,11 +69,15 @@ class TAID(DistilLoss):
         self,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
+        pos_projected_features: torch.Tensor = None,
+        pos_teacher_features: torch.Tensor = None,
         validation: bool = False,
     ):
         student_features, teacher_features = self.forward_fn.make_features(
             projected_features=projected_features,
             teacher_features=teacher_features,
+            pos_projected_features=pos_projected_features,
+            pos_teacher_features=pos_teacher_features,
         )
         p_t = (1 - self.t) * student_features.detach() + self.t * teacher_features
         distil_loss, loss_dict = self.forward_fn.compute_loss(student_features,p_t,validation=validation)
@@ -84,6 +88,8 @@ class TAID(DistilLoss):
         lightning_module: LightningModule,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
+        pos_projected_features: torch.Tensor = None,
+        pos_teacher_features: torch.Tensor = None,
         validation: bool = False,
         **kwargs,
     ) -> torch.Tensor:
@@ -91,6 +97,8 @@ class TAID(DistilLoss):
         loss, loss_dict = self.compute_loss(
             projected_features=projected_features,
             teacher_features=teacher_features,
+            pos_projected_features=pos_projected_features,
+            pos_teacher_features=pos_teacher_features,
             validation=validation,
         )
 

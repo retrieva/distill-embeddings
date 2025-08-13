@@ -24,11 +24,14 @@ class CKD(DistilLoss):
         self.temp = args.ckd_temp if hasattr(args, 'ckd_temp') else 0.02
         self.max_queue_len = args.ckd_max_queue_len if hasattr(args, 'ckd_max_queue_len') else 65536
         self.teacher_queue = torch.tensor([])  # 教師埋め込みのキュー
+        self.use_pos = args.use_pos if hasattr(args, 'use_pos') else False
 
     def make_features(
         self,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
+        pos_projected_features: torch.Tensor=None,
+        pos_teacher_features: torch.Tensor=None,
         **kwargs,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -36,9 +39,14 @@ class CKD(DistilLoss):
         """
         # 類似度よりは埋め込みの重みつきわの方が良さそうだから、一旦こうしてみる
         # ここでやっとかないとTAIDで混ぜる時にNormの違いが影響しちゃいそう
-        student_features = F.normalize(projected_features, dim=-1)
-        teacher_features = F.normalize(teacher_features, dim=-1)
-        return student_features, teacher_features
+        projected_features = F.normalize(projected_features, dim=-1)
+        if pos_projected_features and pos_teacher_features and self.use_pos:
+            # 対照学習のために、正例の埋め込みも必要な場合
+            pos_teacher_features = F.normalize(pos_teacher_features, dim=-1)
+            return projected_features, pos_teacher_features
+        else:
+            teacher_features = F.normalize(teacher_features, dim=-1)
+            return projected_features, teacher_features
 
     def compute_loss(
         self,
@@ -58,7 +66,6 @@ class CKD(DistilLoss):
         # ２回やっちゃっても結果は一緒のはず
         student_features = F.normalize(student_features, dim=-1)
         teacher_features = F.normalize(teacher_features, dim=-1)
-
         key = torch.cat([teacher_features, self.teacher_queue.to(student_features.device)], dim=0)
 
         # クエリとキー間の類似度スコアを計算 ab,cb->ac
@@ -76,14 +83,19 @@ class CKD(DistilLoss):
         lightning_module: LightningModule,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
+        pos_projected_features: torch.Tensor = None,
+        pos_teacher_features: torch.Tensor = None,
         validation: bool = False,
         **kwargs,
     ) -> torch.Tensor:
-        
+
         projected_features, teacher_features = self.make_features(
             projected_features=projected_features,
+            pos_projected_features=pos_projected_features,
             teacher_features=teacher_features,
+            pos_teacher_features=pos_teacher_features,
         )
+
         loss, loss_dict = self.compute_loss(
             projected_features,
             teacher_features,

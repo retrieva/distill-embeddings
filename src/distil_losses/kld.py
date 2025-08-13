@@ -21,6 +21,7 @@ class KLD(DistilLoss):
     def __init__(self, args: Optional[Dict] = None, ):
         super().__init__()
         self.temp = args.kld_temp if hasattr(args, 'kld_temp') else 2.0
+        self.use_pos = args.use_pos if hasattr(args, 'use_pos') else False
 
     def compute_loss(
         self,
@@ -45,13 +46,22 @@ class KLD(DistilLoss):
         self,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
+        pos_projected_features: torch.Tensor = None,
+        pos_teacher_features: torch.Tensor = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        
         student_features = F.normalize(projected_features, dim=-1)
         teacher_features = F.normalize(teacher_features, dim=-1)
-
-        # 類似度行列を計算（バッチ内の各文同士の類似度）
-        sim_s = einsum(student_features, student_features, 'b d, k d -> b k') / self.temp
-        sim_t = einsum(teacher_features, teacher_features, 'b d, k d -> b k') / self.temp
+        if pos_projected_features is not None and pos_teacher_features is not None and self.use_pos:
+            pos_student_features = F.normalize(pos_projected_features, dim=-1)
+            pos_teacher_features = F.normalize(pos_teacher_features, dim=-1)
+            # 類似度行列を計算（バッチ内の各文同士の類似度）
+            sim_s = einsum(student_features, pos_student_features, 'b d, k d -> b k') / self.temp
+            sim_t = einsum(teacher_features, pos_teacher_features, 'b d, k d -> b k') / self.temp
+        else: 
+            # 類似度行列を計算（バッチ内の各文同士の類似度）
+            sim_s = einsum(student_features, student_features, 'b d, k d -> b k') / self.temp
+            sim_t = einsum(teacher_features, teacher_features, 'b d, k d -> b k') / self.temp
 
         return sim_s, sim_t
 
@@ -60,6 +70,8 @@ class KLD(DistilLoss):
         lightning_module: LightningModule,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
+        pos_projected_features: torch.Tensor = None,
+        pos_teacher_features: torch.Tensor = None,
         validation: bool = False,
         **kwargs,
     ) -> torch.Tensor:
@@ -70,6 +82,8 @@ class KLD(DistilLoss):
         sim_s, sim_t = self.make_features(
             projected_features=projected_features,
             teacher_features=teacher_features,
+            pos_projected_features=pos_projected_features,
+            pos_teacher_features=pos_teacher_features,
         )
         kl_loss,loss_dict = self.compute_loss(
             sim_s=sim_s,

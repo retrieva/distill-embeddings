@@ -13,6 +13,8 @@ class DistilLoss(nn.Module):
         lightning_module: LightningModule,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
+        pos_projected_features: torch.Tensor = None,
+        pos_teacher_features: torch.Tensor = None,
         validation: bool = False,
         **kwargs,
     ) -> Union[Dict, torch.Tensor]:

@@ -40,15 +40,25 @@ class KDLoss(nn.Module):
         projected_features = lightning_module.linear(student_features)
 
         # TODO: 複数GPUの場合、この辺りでGatherの処理が必要かもしれない
-
         teacher_features = batch["teacher_features"]
         if isinstance(teacher_features, list):
             teacher_features = torch.stack(teacher_features, dim=0)
+        if "pos" in batch.keys() and "pos_features" in batch.keys():
+            pos_student_features = lightning_module.student_model(batch["pos"])['sentence_embedding']
+            pos_projected_features = lightning_module.linear(pos_student_features)
+            pos_teacher_features = batch["pos_features"]
+            if isinstance(pos_teacher_features, list):
+                pos_teacher_features = torch.stack(pos_teacher_features, dim=0)
+        else:
+            pos_projected_features=None
+            pos_teacher_features=None
             
         loss = self.distil_loss_fn(
             lightning_module=lightning_module,
             projected_features=projected_features,
             teacher_features=teacher_features,
+            pos_projected_features=pos_projected_features,
+            pos_teacher_features=pos_teacher_features,
             validation=validation,
             **kwargs,
         )
