@@ -3,6 +3,11 @@ import mteb
 import argparse
 import torch
 from pathlib import Path
+import yaml
+
+with open("tasks.yaml", 'r') as file:
+    tasks = yaml.safe_load(file)
+    tasks = tasks["eng"]["tasks"]
 
 def main(args):
     model_name = args.model_name
@@ -17,75 +22,14 @@ def main(args):
         # 2. SentenceTransformerモデルを直接ロード
         model = SentenceTransformer(model_name)
         output_folder = Path("output") / model_name.replace("/", "_")
-    evaluation = mteb.MTEB(tasks=[
-                                # Classification
-                                "MTOPDomainClassification",
-                                "AmazonCounterfactualClassification",
-                                "TweetSentimentExtractionClassification",
-                                "EmotionClassification",
-                                "MassiveIntentClassification",
-                                "AmazonReviewsClassification",
-                                "MassiveScenarioClassification",
-                                "Banking77Classification",
-                                "ImdbClassification",
-                                "ToxicConversationsClassification",
-                                "MTOPIntentClassification",
-                                # Clustering
-                                "MedrxivClusteringS2S",
-                                "StackExchangeClusteringP2P",
-                                "StackExchangeClustering",
-                                "TwentyNewsgroupsClustering",
-                                "MedrxivClusteringP2P",
-                                "BiorxivClusteringS2S",
-                                "BiorxivClusteringP2P",
-                                # PairClassification
-                                "TwitterURLCorpus",
-                                "SprintDuplicateQuestions",
-                                "TwitterSemEval2015",
-                                # Reranking
-                                "StackOverflowDupQuestions",
-                                "SciDocsRR",
-                                "AskUbuntuDupQuestions",
-                                # Retrieval
-                                "CQADupstackMathematicaRetrieval",
-                                "CQADupstackStatsRetrieval",
-                                "CQADupstackTexRetrieval",
-                                "SCIDOCS",
-                                "CQADupstackEnglishRetrieval",
-                                "ArguAna",
-                                "TRECCOVID",
-                                "CQADupstackUnixRetrieval",
-                                "CQADupstackGamingRetrieval",
-                                "CQADupstackGisRetrieval",
-                                "CQADupstackWordpressRetrieval",
-                                "FiQA2018",
-                                "SciFact",
-                                "CQADupstackPhysicsRetrieval",
-                                "NFCorpus",
-                                "CQADupstackProgrammersRetrieval",
-                                "CQADupstackAndroidRetrieval",
-                                "CQADupstackWebmastersRetrieval",
-                                # STS
-                                "BIOSSES",
-                                "STS13",
-                                "STS12",
-                                "STSBenchmark",
-                                "STS15",
-                                "STS14",
-                                "STS16",
-                                "STS22",
-                                "SICK-R",
-                                "STS17",
-                                # Summarization
-                                "SummEval",
-                                ],
-                                task_langs=["eng"],)
+    evaluation = mteb.MTEB(tasks=tasks, task_langs=["eng"],)
+    # evaluation.tasks[0].calculate_metadata_metrics()
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         # MTEBの評価を実行
         scores = evaluation.run(model, output_folder=output_folder,
-                                batch_size=args.batch_size, num_workers=args.num_workers,trust_remote_code=True,verbosity=0)
+                                batch_size=args.batch_size, num_workers=args.num_workers,trust_remote_code=True,verbosity=1)
     mteb_dict = {score.task_name: score.get_score() for score in scores}
     print("Evaluation scores:")
     for task_name, score in mteb_dict.items():

@@ -14,6 +14,7 @@ dependencies = [
     "mteb>=1.38.33",
     "numpy<2.0.0",
     "polars>=1.32.0",
+    "pyyaml>=6.0.2",
     "sentence-transformers>=5.0.0",
     "sentencepiece>=0.2.0",
     "torch>=2.7.1",

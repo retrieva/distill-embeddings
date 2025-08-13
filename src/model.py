@@ -7,6 +7,7 @@ from src.loss import get_loss_fn, LossOutput
 from sentence_transformers import SentenceTransformer
 from src.data import Batch
 import mteb
+import yaml
 
 class KDForSentEmb(L.LightningModule):
     def __init__(self, args):
@@ -18,6 +19,8 @@ class KDForSentEmb(L.LightningModule):
         self.args = args
         self.validation_step_outputs = {}
         self.mteb_dict = {}
+        with open("tasks.yaml", 'r') as file:
+            self.tasks = yaml.safe_load(file)[args.language]["tasks"]
 
     def configure_model(self):
         self.student_model = SentenceTransformer(
@@ -38,7 +41,7 @@ class KDForSentEmb(L.LightningModule):
         return outputs
 
     def get_batch_size(self, batch: Batch) -> int:
-        return batch["input_ids"].size(0)
+        return batch["anc"]["input_ids"].size(0)
 
     def training_step(self, batch: Batch, batch_idx) -> Tensor:
         batch_size = self.get_batch_size(batch)
@@ -59,14 +62,7 @@ class KDForSentEmb(L.LightningModule):
             inputs = [inputs]
         embeddings = self.student_model.encode(inputs, convert_to_tensor=True)
         return embeddings
-
-    # def _compute_metric(self, outputs, step="val"):
-    #     preds = flatten_list([item["preds"] for item in outputs])
-    #     target = flatten_list([item["target"] for item in outputs])
-    #     metric_res = compute_metrics(preds, target)
-    #     metric_res = {f"{step}/{k}": v for k, v in metric_res.items()}
-    #     return metric_res
-
+    
     @torch.no_grad()
     def validation_step(self, batch, batch_idx, dataloader_idx=0) -> Tensor:
         res = {}
@@ -85,13 +81,6 @@ class KDForSentEmb(L.LightningModule):
             sync_dist=True,
         )
         res["loss"] = outputs.loss
-        # validation, STSとかで適当にやる？
-        # JSICKかJSTS　MTEBで簡単にできるはず
-        # if "model_inputs_gen" in batch:
-        #     model_inputs_gen = batch.pop("model_inputs_gen")
-        #     preds, target = self.generate(model_inputs_gen)
-        #     res["preds"] = preds
-        #     res["target"] = target
         if dataloader_idx not in self.validation_step_outputs:
             self.validation_step_outputs[dataloader_idx] = []
         self.validation_step_outputs[dataloader_idx].append(res)
@@ -103,16 +92,7 @@ class KDForSentEmb(L.LightningModule):
         try:
             # MTEB evaluation
             output_folder = self.args.output_dir / "mteb_eval"
-            evaluation = mteb.MTEB(tasks=[
-                                "AmazonReviewsClassification",
-                                "LivedoorNewsClustering.v2",
-                                "JaGovFaqsRetrieval",
-                                "NLPJournalAbsIntroRetrieval",
-                                "NLPJournalTitleAbsRetrieval",
-                                "NLPJournalTitleIntroRetrieval",
-                                "JSICK",
-                                "JSTS"],
-                                task_langs=["jpn"],)
+            evaluation = mteb.MTEB(tasks=self.tasks, task_langs=[self.args.language],)
             import warnings
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")

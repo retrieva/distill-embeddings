@@ -3,6 +3,11 @@ import mteb
 import argparse
 import torch
 from pathlib import Path
+import yaml
+
+with open("tasks.yaml", 'r') as file:
+    tasks = yaml.safe_load(file)
+    tasks = tasks["jpn"]["tasks"]
 
 def main(args):
     model_name = args.model_name
@@ -17,17 +22,7 @@ def main(args):
         # 2. SentenceTransformerモデルを直接ロード
         model = SentenceTransformer(model_name)
         output_folder = Path("output") / model_name.replace("/", "_")
-    evaluation = mteb.MTEB(tasks=[
-                                # "JapaneseSentimentClassification",
-                                "AmazonReviewsClassification",
-                                "LivedoorNewsClustering.v2",
-                                "JaGovFaqsRetrieval",
-                                "NLPJournalAbsIntroRetrieval",
-                                "NLPJournalTitleAbsRetrieval",
-                                "NLPJournalTitleIntroRetrieval",
-                                "JSICK",
-                                "JSTS"],
-                                task_langs=["jpn"],)
+    evaluation = mteb.MTEB(tasks=tasks, task_langs=["jpn"],)
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
