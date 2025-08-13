@@ -17,6 +17,7 @@ class KDForSentEmb(L.LightningModule):
         self.loss_fn = get_loss_fn(args)
         self.args = args
         self.validation_step_outputs = {}
+        self.mteb_dict = {}
 
     def configure_model(self):
         self.student_model = SentenceTransformer(
@@ -95,25 +96,7 @@ class KDForSentEmb(L.LightningModule):
             self.validation_step_outputs[dataloader_idx] = []
         self.validation_step_outputs[dataloader_idx].append(res)
         return outputs.loss
-
-    # def on_validation_epoch_end(self):
-    #     res = {}
-    #     for (
-    #         idx,
-    #         step_outputs,
-    #     ) in self.validation_step_outputs.items():
-    #         losses = torch.stack([item["loss"] for item in step_outputs])
-    #         eval_loss = losses.mean()
-    #         if "preds" in step_outputs[0]:
-    #             metric_res = self._compute_metric(step_outputs, step=f"val_{idx}")
-    #             res.update(metric_res)
-    #         if self.sampler is not None and idx == 0:
-    #             self.sampler.update(loss=eval_loss)
-    #             if self.sampler.sampling_type == "adaptive":
-    #                 res["adaptive_threshold"] = self.sampler.adaptive_threshold
-    #     self.log_dict(res, logger=True, sync_dist=True)
-    #     self.validation_step_outputs.clear()
-
+    
     def on_train_epoch_end(self):
         if not self.args.mteb_eval:
             return
@@ -121,18 +104,15 @@ class KDForSentEmb(L.LightningModule):
             # MTEB evaluation
             output_folder = self.args.output_dir / "mteb_eval"
             evaluation = mteb.MTEB(tasks=[
-                "AmazonCounterfactualClassification",
-                # "AmazonReviewsClassification",
-                # "LivedoorNewsClustering.v2",
-                # "MewsC16JaClustering",
-                # "MIRACLReranking",
-                # "NLPJournalAbsIntroRetrieval",
-                # "NLPJournalTitleAbsRetrieval",
-                # "NLPJournalTitleIntroRetrieval",
-                "JSICK",
-                "JSTS"
-                                        ],
-                                        task_langs=["jpn"],)
+                                "AmazonReviewsClassification",
+                                "LivedoorNewsClustering.v2",
+                                "JaGovFaqsRetrieval",
+                                "NLPJournalAbsIntroRetrieval",
+                                "NLPJournalTitleAbsRetrieval",
+                                "NLPJournalTitleIntroRetrieval",
+                                "JSICK",
+                                "JSTS"],
+                                task_langs=["jpn"],)
             import warnings
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
@@ -143,11 +123,28 @@ class KDForSentEmb(L.LightningModule):
                                         encode_kwargs={"batch_size": self.args.batch_size},
                                         )
             mteb_dict = {score.task_name: score.get_score() for score in scores}
+            if self._save_mteb_flag(mteb_dict):
+                self.mteb_dict = mteb_dict
             self.log_dict(mteb_dict,logger=True,sync_dist=True)
             self.print(f"MTEB evaluation results: {mteb_dict}")
         except Exception as e:
             self.print(f"Error during MTEB evaluation: {e}")
             self.print("Skipping MTEB evaluation due to an error.")
+
+    def _save_mteb_flag(self,mteb_dict:dict) -> bool:
+        return True
+
+    def on_train_end(self) -> None:
+        for task_name, score in self.mteb_dict.items():
+            print(f"{task_name}: {score}")
+        with open(self.args.output_dir / "mteb_eval" / "scores.txt", "w") as f:
+            f.write(f"|")
+            for task_name in self.mteb_dict.keys():
+                f.write(f"{task_name}|")
+            f.write(f"\n|")
+            for score in self.mteb_dict.values():
+                f.write(f"{score}|")
+        print(f"Scores saved to {self.args.output_dir / "mteb_eval" / 'scores.txt'}")
 
     # def on_save_checkpoint(self, trainer: L.Trainer, lightning_module: L.LightningModule, checkpoint: Dict[str, Any]):
     def on_save_checkpoint(self, checkpoint):

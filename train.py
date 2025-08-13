@@ -40,13 +40,12 @@ if __name__ == "__main__":
         log_every_n_steps=args.log_every_n_steps,
         precision="bf16-mixed",
         num_sanity_val_steps=0,
-        # strategy=DeepSpeedStrategy(
-        #     stage=2, allgather_bucket_size=5e8, reduce_bucket_size=5e8
-        # ),
         callbacks=[modelcheckpoint],
         logger=WandbLogger(
             name=os.path.basename(args.output_dir),
             project="distillation",
+            # group="",
+            tags=[args.dataset_name,f"{args.teacher_model.replace('/','_')}_encoded",args.student_model.replace('/', '_'),"0812"],
             save_dir=args.output_dir,
         ),
     )
