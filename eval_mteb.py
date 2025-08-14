@@ -4,6 +4,9 @@ import argparse
 import torch
 from pathlib import Path
 import yaml
+from mteb.leaderboard.table import create_tables
+import pandas as pd
+from mteb.load_results.benchmark_results import ModelResult
 
 with open("tasks.yaml", 'r') as file:
     tasks = yaml.safe_load(file)
@@ -30,18 +33,22 @@ def main(args):
         # MTEBの評価を実行
         scores = evaluation.run(model, output_folder=output_folder,
                                 batch_size=args.batch_size, num_workers=args.num_workers,trust_remote_code=True,verbosity=1)
-    mteb_dict = {score.task_name: score.get_score() for score in scores}
-    print("Evaluation scores:")
-    for task_name, score in mteb_dict.items():
-        print(f"{task_name}: {score}")
-    with open(output_folder / "scores.txt", "w") as f:
-        for task_name in mteb_dict.keys():
-            f.write(f"{task_name}\t")
-        f.write(f"\n")
-        for score in mteb_dict.values():
-            f.write(f"{score}\t")
-    print(f"Scores saved to {output_folder / 'scores.txt'}")
+    scores_long = ModelResult(model_name=model_name,
+                              model_revision=model.model_card_data.base_model_revision,
+                              task_results=scores).get_scores(format="long")
 
+    # Convert scores into leaderboard tables
+    summary_gr_df, per_task_gr_df = create_tables(scores_long=scores_long)
+
+    # Convert Gradio DataFrames to Pandas
+    summary_df = pd.DataFrame(
+        summary_gr_df.value["data"], columns=summary_gr_df.value["headers"]
+    )
+    per_task_df = pd.DataFrame(
+        per_task_gr_df.value["data"], columns=per_task_gr_df.value["headers"]
+    )
+    scores = pd.concat([summary_df, per_task_df], axis=1)
+    scores.to_csv(output_folder / "mteb_scores.csv")
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run MTEB evaluation on a model.")
     parser.add_argument("--model_name", type=str, default="answerdotai/ModernBERT-base",help="Name of the model to evaluate.")
