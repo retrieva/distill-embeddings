@@ -105,14 +105,14 @@ def main(args):
     with torch.no_grad():
         logger.info("-- Check OOM --")
         teacher_model.encode(
-            long_texts["text"][:2],
+            long_texts["text"][:args.long_batch_size*2],
             show_progress_bar=True, 
             batch_size=args.long_batch_size,
             max_length=args.max_length,
             normalize_embeddings=True,
         )
         teacher_model.encode(
-            short_texts["text"][:32],
+            short_texts["text"][:args.short_batch_size*2],
             show_progress_bar=True, 
             batch_size=args.short_batch_size,
             max_length=args.max_length,
@@ -188,7 +188,7 @@ if __name__ == "__main__":
     parser.add_argument("--long_batch_size", type=int, default=1, help="Batch size for processing long texts")
     parser.add_argument("--short_batch_size", type=int, default=32, help="Batch size for processing short texts")
     parser.add_argument("--max_length", type=int, default=None, help="Maximum length for tokenization")
-    parser.add_argument("--threshold", type=int, default=4096, help="Threshold for distinguishing long and short texts 文字数なのに注意")
+    parser.add_argument("--threshold", type=int, default=2048, help="Threshold for distinguishing long and short texts 文字数なのに注意")
     parser.add_argument("--disable_multigpu", action="store_true", help="Disable multi-GPU processing")
     args = parser.parse_args()
     main(args)
