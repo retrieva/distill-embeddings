@@ -22,7 +22,7 @@ class KDForSentEmb(L.LightningModule):
         with open("tasks.yaml", 'r') as file:
             self.on_train_tasks = yaml.safe_load(file)[args.language]["on_train_tasks"]
         with open("tasks.yaml", 'r') as file:
-            self.on_eval_tasks = yaml.safe_load(file)[args.language]["on_eval_tasks"]
+            self.on_eval_tasks = yaml.safe_load(file)[args.language]["on_train_end_tasks"]
 
     def configure_model(self):
         self.student_model = SentenceTransformer(
@@ -101,7 +101,7 @@ class KDForSentEmb(L.LightningModule):
                 scores = evaluation.run(self.student_model, output_folder=output_folder,
                                         num_workers=self.args.num_workers,
                                         overwrite_results=True,
-                                        verbosity=0,
+                                        verbosity=1,
                                         encode_kwargs={"batch_size": self.args.batch_size},
                                         )
             mteb_dict = {score.task_name: score.get_score() for score in scores}
@@ -129,7 +129,7 @@ class KDForSentEmb(L.LightningModule):
                 scores = evaluation.run(self.student_model, output_folder=output_folder,
                                         num_workers=self.args.num_workers,
                                         overwrite_results=True,
-                                        verbosity=0,
+                                        verbosity=1,
                                         encode_kwargs={"batch_size": self.args.batch_size},
                                         )
             from mteb.leaderboard.table import create_tables
@@ -155,7 +155,6 @@ class KDForSentEmb(L.LightningModule):
         except Exception as e:
             self.print(f"Error during MTEB evaluation: {e}")
             self.print("Skipping MTEB evaluation due to an error.")
-        print(f"Scores saved to {self.args.output_dir / 'mteb_eval' / 'scores.txt'}")
 
     # def on_save_checkpoint(self, trainer: L.Trainer, lightning_module: L.LightningModule, checkpoint: Dict[str, Any]):
     def on_save_checkpoint(self, checkpoint):
