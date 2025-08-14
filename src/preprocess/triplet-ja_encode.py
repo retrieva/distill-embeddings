@@ -19,7 +19,8 @@ from encode_utils import (
     encode_with_checkpoint_multigpu,
     setup_multiprocess_pool,
     get_available_gpus,
-    process_encoded_dataset
+    process_encoded_dataset,
+    save_split_dataset  # 新しい関数を追加
 )
 
 UNUSED_SUBSET=["wordnet-ja-synonyms",
@@ -168,7 +169,9 @@ def main(args):
     )
 
     output_path.mkdir(parents=True, exist_ok=True)
-    reconstructed_dataset.save_to_disk(output_path)
+    
+    # 分割保存を使用
+    save_split_dataset(reconstructed_dataset, output_path)
     json.dump(stats, open(output_path / "stats.json", "w"), indent=4)
     
     # チェックポイントディレクトリをクリーンアップ

@@ -177,6 +177,72 @@ def reconstruct_dataset(encoded_dataset):
     
     return Dataset.from_dict(reconstructed_data)
 
+def save_split_dataset(dataset, output_path):
+    """データセットを埋め込みと他のデータに分けて保存"""
+    output_path = Path(output_path)
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    # 埋め込み以外のデータを抽出
+    metadata = {
+        key: dataset[key] for key in dataset.column_names 
+        if not key.endswith('_features')
+    }
+    
+    # 埋め込みデータを抽出
+    embeddings = {}
+    for key in dataset.column_names:
+        if key.endswith('_features'):
+            embeddings[key] = np.array(dataset[key])
+    
+    # メタデータをJSONLで保存（軽量）
+    metadata_dataset = Dataset.from_dict(metadata)
+    metadata_dataset.to_json(output_path / "metadata.jsonl")
+    
+    # 埋め込みをnumpyで保存（効率的）
+    for key, features in embeddings.items():
+        np.save(output_path / f"{key}.npy", features)
+    
+    # インデックス情報を保存（順番保証のため）
+    index_info = {
+        "total_samples": len(dataset),
+        "embedding_keys": list(embeddings.keys()),
+        "metadata_keys": list(metadata.keys())
+    }
+    
+    import json
+    with open(output_path / "index_info.json", "w") as f:
+        json.dump(index_info, f, indent=2)
+    
+    logger.info(f"Dataset split and saved to {output_path}")
+    logger.info(f"Metadata: {len(metadata)} columns, {len(dataset)} samples")
+    logger.info(f"Embeddings: {len(embeddings)} arrays")
+
+def load_split_dataset(dataset_path):
+    """分割保存されたデータセットを読み込み"""
+    dataset_path = Path(dataset_path)
+    
+    # インデックス情報を読み込み
+    with open(dataset_path / "index_info.json", "r") as f:
+        index_info = json.load(f)
+    
+    # メタデータを読み込み
+    metadata_dataset = Dataset.from_json(dataset_path / "metadata.jsonl")
+    metadata = metadata_dataset.to_dict()
+    
+    # 埋め込みを読み込み
+    embeddings = {}
+    for key in index_info["embedding_keys"]:
+        embeddings[key] = np.load(dataset_path / f"{key}.npy").tolist()
+    
+    # データセットを再構築
+    combined_dict = {**metadata, **embeddings}
+    reconstructed_dataset = Dataset.from_dict(combined_dict)
+    
+    logger.info(f"Dataset loaded from {dataset_path}")
+    logger.info(f"Total samples: {len(reconstructed_dataset)}")
+    
+    return reconstructed_dataset
+
 def process_encoded_dataset(long_texts, short_texts, long_features, short_features):
     """エンコード結果をデータセットに変換し、再構築"""
     # add_columnの代わりにfrom_dictを使用
