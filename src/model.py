@@ -20,7 +20,9 @@ class KDForSentEmb(L.LightningModule):
         self.validation_step_outputs = {}
         self.mteb_dict = {}
         with open("tasks.yaml", 'r') as file:
-            self.tasks = yaml.safe_load(file)[args.language]["on_train_tasks"]
+            self.on_train_tasks = yaml.safe_load(file)[args.language]["on_train_tasks"]
+        with open("tasks.yaml", 'r') as file:
+            self.on_eval_tasks = yaml.safe_load(file)[args.language]["on_eval_tasks"]
 
     def configure_model(self):
         self.student_model = SentenceTransformer(
@@ -92,7 +94,7 @@ class KDForSentEmb(L.LightningModule):
         try:
             # MTEB evaluation
             output_folder = self.args.output_dir / "mteb_eval"
-            evaluation = mteb.MTEB(tasks=self.tasks, task_langs=[self.args.language],)
+            evaluation = mteb.MTEB(tasks=self.on_train_tasks, task_langs=[self.args.language],)
             import warnings
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
@@ -115,14 +117,44 @@ class KDForSentEmb(L.LightningModule):
         return True
 
     def on_train_end(self) -> None:
-        for task_name, score in self.mteb_dict.items():
-            print(f"{task_name}: {score}")
-        with open(self.args.output_dir / "mteb_eval" / "scores.txt", "w") as f:
-            for task_name in self.mteb_dict.keys():
-                f.write(f"{task_name}\t")
-            f.write(f"\n")
-            for score in self.mteb_dict.values():
-                f.write(f"{score}\t")
+        if not self.args.mteb_eval:
+            return
+        try:
+            # MTEB evaluation
+            output_folder = self.args.output_dir / "mteb_eval"
+            evaluation = mteb.MTEB(tasks=self.on_eval_tasks, task_langs=[self.args.language],)
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                scores = evaluation.run(self.student_model, output_folder=output_folder,
+                                        num_workers=self.args.num_workers,
+                                        overwrite_results=True,
+                                        verbosity=0,
+                                        encode_kwargs={"batch_size": self.args.batch_size},
+                                        )
+            from mteb.leaderboard.table import create_tables
+            from mteb.load_results.benchmark_results import ModelResult
+            import pandas as pd
+            scores_long = ModelResult(model_name=self.args.student_model,
+                    model_revision=self.student_model.model_card_data.base_model_revision,
+                    task_results=scores).get_scores(format="long")
+
+            # Convert scores into leaderboard tables
+            summary_gr_df, per_task_gr_df = create_tables(scores_long=scores_long)
+
+            # Convert Gradio DataFrames to Pandas
+            summary_df = pd.DataFrame(
+                summary_gr_df.value["data"], columns=summary_gr_df.value["headers"]
+            )
+            per_task_df = pd.DataFrame(
+                per_task_gr_df.value["data"], columns=per_task_gr_df.value["headers"]
+            )
+            scores = pd.concat([summary_df, per_task_df], axis=1)
+            scores.to_csv(output_folder / "jmteb_scores.csv")
+            print(f"Scores saved to {output_folder / 'jmteb_scores.csv'}")
+        except Exception as e:
+            self.print(f"Error during MTEB evaluation: {e}")
+            self.print("Skipping MTEB evaluation due to an error.")
         print(f"Scores saved to {self.args.output_dir / 'mteb_eval' / 'scores.txt'}")
 
     # def on_save_checkpoint(self, trainer: L.Trainer, lightning_module: L.LightningModule, checkpoint: Dict[str, Any]):
