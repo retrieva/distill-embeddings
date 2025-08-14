@@ -1,67 +1,50 @@
 eng:
-  tasks:
-    # Classification
-    - "MTOPDomainClassification"
-    - "AmazonCounterfactualClassification"
-    - "TweetSentimentExtractionClassification"
-    - "EmotionClassification"
-    - "MassiveIntentClassification"
-    - "AmazonReviewsClassification"
-    - "MassiveScenarioClassification"
-    - "Banking77Classification"
-    - "ImdbClassification"
-    - "ToxicConversationsClassification"
-    - "MTOPIntentClassification"
-    # Clustering
-    - "MedrxivClusteringS2S"
-    - "StackExchangeClusteringP2P"
-    - "StackExchangeClustering"
-    - "TwentyNewsgroupsClustering"
-    - "MedrxivClusteringP2P"
-    - "BiorxivClusteringS2S"
-    - "BiorxivClusteringP2P"
-    # PairClassification
-    - "TwitterURLCorpus"
-    - "SprintDuplicateQuestions"
-    - "TwitterSemEval2015"
-    # Reranking
-    - "StackOverflowDupQuestions"
-    - "SciDocsRR"
-    - "AskUbuntuDupQuestions"
-    # Retrieval
-    - "CQADupstackMathematicaRetrieval"
-    - "CQADupstackStatsRetrieval"
-    - "CQADupstackTexRetrieval"
-    - "SCIDOCS"
-    - "CQADupstackEnglishRetrieval"
-    - "ArguAna"
-    - "TRECCOVID"
-    - "CQADupstackUnixRetrieval"
-    - "CQADupstackGamingRetrieval"
-    - "CQADupstackGisRetrieval"
-    - "CQADupstackWordpressRetrieval"
-    - "FiQA2018"
-    - "SciFact"
-    - "CQADupstackPhysicsRetrieval"
-    - "NFCorpus"
-    - "CQADupstackProgrammersRetrieval"
-    - "CQADupstackAndroidRetrieval"
-    - "CQADupstackWebmastersRetrieval"
-    # STS
-    - "BIOSSES"
-    - "STS13"
-    - "STS12"
-    - "STSBenchmark"
-    - "STS15"
-    - "STS14"
-    - "STS16"
-    - "STS22"
-    - "SICK-R"
-    - "STS17"
-    # Summarization
-    - "SummEval"
+  on_train_tasks:
+  
+  on_eval_tasks:
+    - ArguAna
+    - ArXivHierarchicalClusteringP2P
+    - ArXivHierarchicalClusteringS2S
+    - AskUbuntuDupQuestions
+    - BIOSSES
+    - Banking77Classification
+    - BiorxivClusteringP2P.v2
+    - CQADupstackGamingRetrieval
+    - CQADupstackUnixRetrieval
+    - ClimateFEVERHardNegatives
+    - FEVERHardNegatives
+    - FiQA2018
+    - HotpotQAHardNegatives
+    - ImdbClassification
+    - MTOPDomainClassification
+    - MassiveIntentClassification
+    - MassiveScenarioClassification
+    - MedrxivClusteringP2P.v2
+    - MedrxivClusteringS2S.v2
+    - MindSmallReranking
+    - SCIDOCS
+    - SICK-R
+    - STS12
+    - STS13
+    - STS14
+    - STS15
+    - STSBenchmark
+    - SprintDuplicateQuestions
+    - StackExchangeClustering.v2
+    - StackExchangeClusteringP2P.v2
+    - TRECCOVID
+    - Touche2020Retrieval.v3
+    - ToxicConversationsClassification
+    - TweetSentimentExtractionClassification
+    - TwentyNewsgroupsClustering.v2
+    - TwitterSemEval2015
+    - TwitterURLCorpus
+    - SummEvalSummarization.v2
+    - AmazonCounterfactualClassification
+    - STS17
+    - STS22.v2
 jpn:
-  tasks:
+  on_train_tasks:
     - "AmazonReviewsClassification"
     - "LivedoorNewsClustering.v2"
     - "JaGovFaqsRetrieval"
@@ -70,3 +53,20 @@ jpn:
     - "NLPJournalTitleIntroRetrieval"
     - "JSICK"
     - "JSTS"
+  on_eval_tasks:
+    - LivedoorNewsClustering.v2
+    - MewsC16JaClustering
+    - AmazonReviewsClassification
+    - AmazonCounterfactualClassification
+    - MassiveIntentClassification
+    - MassiveScenarioClassification
+    - JSTS
+    - JSICK
+    - PawsXPairClassification
+    - JaqketRetrieval
+    - MrTidyRetrieval
+    - JaGovFaqsRetrieval
+    - NLPJournalTitleAbsRetrieval
+    - NLPJournalAbsIntroRetrieval
+    - NLPJournalTitleIntroRetrieval
+    - ESCIReranking

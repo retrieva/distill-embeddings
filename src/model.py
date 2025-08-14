@@ -20,7 +20,7 @@ class KDForSentEmb(L.LightningModule):
         self.validation_step_outputs = {}
         self.mteb_dict = {}
         with open("tasks.yaml", 'r') as file:
-            self.tasks = yaml.safe_load(file)[args.language]["tasks"]
+            self.tasks = yaml.safe_load(file)[args.language]["on_train_tasks"]
 
     def configure_model(self):
         self.student_model = SentenceTransformer(
@@ -118,13 +118,12 @@ class KDForSentEmb(L.LightningModule):
         for task_name, score in self.mteb_dict.items():
             print(f"{task_name}: {score}")
         with open(self.args.output_dir / "mteb_eval" / "scores.txt", "w") as f:
-            f.write(f"|")
             for task_name in self.mteb_dict.keys():
-                f.write(f"{task_name}|")
-            f.write(f"\n|")
+                f.write(f"{task_name}\t")
+            f.write(f"\n")
             for score in self.mteb_dict.values():
-                f.write(f"{score}|")
-        print(f"Scores saved to {self.args.output_dir / "mteb_eval" / 'scores.txt'}")
+                f.write(f"{score}\t")
+        print(f"Scores saved to {self.args.output_dir / 'mteb_eval' / 'scores.txt'}")
 
     # def on_save_checkpoint(self, trainer: L.Trainer, lightning_module: L.LightningModule, checkpoint: Dict[str, Any]):
     def on_save_checkpoint(self, checkpoint):

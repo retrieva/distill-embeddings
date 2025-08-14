@@ -7,7 +7,7 @@ import yaml
 
 with open("tasks.yaml", 'r') as file:
     tasks = yaml.safe_load(file)
-    tasks = tasks["jpn"]["tasks"]
+    tasks = tasks["jpn"]["on_eval_tasks"]
 
 def main(args):
     model_name = args.model_name
@@ -34,12 +34,11 @@ def main(args):
     for task_name, score in mteb_dict.items():
         print(f"{task_name}: {score}")
     with open(output_folder / "scores.txt", "w") as f:
-        f.write(f"|")
         for task_name in mteb_dict.keys():
-            f.write(f"{task_name}|")
-        f.write(f"\n|")
+            f.write(f"{task_name}\t")
+        f.write(f"\n")
         for score in mteb_dict.values():
-            f.write(f"{score}|")
+            f.write(f"{score}\t")
     print(f"Scores saved to {output_folder / 'scores.txt'}")
 
 if __name__ == "__main__":
