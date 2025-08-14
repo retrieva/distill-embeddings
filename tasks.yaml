@@ -1,19 +1,55 @@
 eng:
   on_train_tasks:
-  
+      # classification
+    # - ToxicConversationsClassification
+    # clustering
+    - StackExchangeClustering.v2
+    # Retrieval
+    - HotpotQAHardNegatives
+    # STS
+    - STSBenchmark
+    - SICK-R
+    # Summarize
+    - SummEvalSummarization.V2
+  on_train_end_tasks:
+      # classification
+    - ToxicConversationsClassification
+    - TweetSentimentExtractionClassification
+    # clustering
+    - StackExchangeClustering.v2
+    # Retrieval
+    - HotpotQAHardNegatives
+    - MSMARCOHardNegatives
+    # STS
+    - STSBenchmark
+    - SICK-R
+    # Summarize
+    - SummEvalSummarization.V2
   on_eval_tasks:
     - ArguAna
+      # やれなくはない大きさのRetieval
     - ArXivHierarchicalClusteringP2P
+      # Clustering　2048
     - ArXivHierarchicalClusteringS2S
+      # Clustering　めちゃ小さい？
     - AskUbuntuDupQuestions
+      # Reranking　375
     - BIOSSES
+      # STS　Medical　１００とか
     - Banking77Classification
+      # Classification 1まん、でかい
     - BiorxivClusteringP2P.v2
+      # Clustering 5まん、無理
     - CQADupstackGamingRetrieval
+      # Retrieval doc 5まん
     - CQADupstackUnixRetrieval
+      # Retrieval doc 5まん
     - ClimateFEVERHardNegatives
+      # Retrieval doc 5まん
     - FEVERHardNegatives
+      # Retrieval doc  １６まん、無理
     - FiQA2018
+      # Retrieval doc 6まん
     - HotpotQAHardNegatives
     - ImdbClassification
     - MTOPDomainClassification
@@ -43,8 +79,15 @@ eng:
     - AmazonCounterfactualClassification
     - STS17
     - STS22.v2
+
 jpn:
   on_train_tasks:
+    - "AmazonReviewsClassification"
+    # - "LivedoorNewsClustering.v2"
+    # - "JaGovFaqsRetrieval"
+    - "JSICK"
+    - "JSTS"
+  on_train_end_tasks:
     - "AmazonReviewsClassification"
     - "LivedoorNewsClustering.v2"
     - "JaGovFaqsRetrieval"
