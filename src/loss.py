@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 import torch
 from torch import nn, Tensor
+import torch.nn.functional as F
 from lightning import LightningModule
 from src.distil_losses import *
 from src.data import Batch
@@ -36,7 +37,8 @@ class InfoCSE(nn.Module):
         features = lightning_module.student_model(batch)['sentence_embedding']
         features = F.normalize(features, dim=-1)
         # TODO: 複数GPUの場合、この辺りでGatherの処理が必要かもしれない
-        if "pos" in batch.keys() and "pos_features" in batch.keys():
+        if "pos" in batch.keys() and "pos_features" in batch.keys() and self.use_pos:
+            print("use positive!")
             pos_features = lightning_module.student_model(batch["pos"])['sentence_embedding']
         else:
             # unsupと同じように同じ文2回かける（dropoutでちょっと違う埋め込みになるはず）
@@ -73,9 +75,11 @@ class InfoCSE(nn.Module):
 class KDLoss(nn.Module):
     def __init__(
         self,
+        use_pos,
         distil_loss_fn: Optional[DistilLoss] = None,
     ):
         super().__init__()
+        self.use_pos = use_pos
         self.distil_loss_fn = distil_loss_fn
 
     def forward(
@@ -94,7 +98,8 @@ class KDLoss(nn.Module):
         teacher_features = batch["teacher_features"]
         if isinstance(teacher_features, list):
             teacher_features = torch.stack(teacher_features, dim=0)
-        if "pos" in batch.keys() and "pos_features" in batch.keys() and self.args.use_pos:
+        if "pos" in batch.keys() and "pos_features" in batch.keys() and self.use_pos:
+            print("use positive!")
             pos_student_features = lightning_module.student_model(batch["pos"])['sentence_embedding']
             pos_projected_features = lightning_module.linear(pos_student_features)
             pos_teacher_features = batch["pos_features"]
@@ -143,4 +148,4 @@ def get_loss_fn(args):
         distil_loss_fn = InfoCSE(args)
     else:
         raise NotImplementedError(args.loss_type)
-    return KDLoss(distil_loss_fn=distil_loss_fn)
+    return KDLoss(use_pos = args.use_pos, distil_loss_fn=distil_loss_fn)
