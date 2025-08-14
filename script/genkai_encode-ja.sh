@@ -14,7 +14,8 @@ echo "Number of GPUs: $GPU_COUNT"
 uv sync
 
 # マルチGPUでエンコーディング実行
-uv run python src/preprocess/triplet-en_encode.py \
+uv run python src/preprocess/triplet-ja_encode.py \
+    --data_name "cl-nagoya/ruri-dataset-v2-pt" \
     --teacher_model "Qwen/Qwen3-Embedding-4B" \
     --long_batch_size 2 \
     --short_batch_size 64 \
