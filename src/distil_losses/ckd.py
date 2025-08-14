@@ -40,7 +40,7 @@ class CKD(DistilLoss):
         # 類似度よりは埋め込みの重みつきわの方が良さそうだから、一旦こうしてみる
         # ここでやっとかないとTAIDで混ぜる時にNormの違いが影響しちゃいそう
         projected_features = F.normalize(projected_features, dim=-1)
-        if pos_projected_features and pos_teacher_features and self.use_pos:
+        if pos_projected_features is not None and pos_teacher_features is not None and self.use_pos:
             # 対照学習のために、正例の埋め込みも必要な場合
             pos_teacher_features = F.normalize(pos_teacher_features, dim=-1)
             return projected_features, pos_teacher_features
