@@ -9,12 +9,10 @@ from src.data import Batch
 import mteb
 import yaml
 
-class KDForSentEmb(L.LightningModule):
+class SentEmb(L.LightningModule):
     def __init__(self, args):
         super().__init__()
         self.student_model = None
-        self.teacher_model_config = None
-        self.linear = None
         self.loss_fn = get_loss_fn(args)
         self.args = args
         self.validation_step_outputs = {}
@@ -28,15 +26,6 @@ class KDForSentEmb(L.LightningModule):
         self.student_model = SentenceTransformer(
             self.args.student_model,
         ).bfloat16()
-        self.teacher_model_config = AutoConfig.from_pretrained(
-            self.args.teacher_model,
-            trust_remote_code=True,
-        )
-        # up projection layer
-        self.linear = torch.nn.Linear(
-            self.student_model.get_sentence_embedding_dimension(),
-            self.teacher_model_config.hidden_size
-        )
 
     def forward(self, batch: Batch, validation:bool = False, **kwargs) -> LossOutput:
         outputs: LossOutput = self.loss_fn(lightning_module=self, batch=batch, validation=validation, **kwargs)
@@ -156,9 +145,7 @@ class KDForSentEmb(L.LightningModule):
             self.print(f"Error during MTEB evaluation: {e}")
             self.print("Skipping MTEB evaluation due to an error.")
 
-    # def on_save_checkpoint(self, trainer: L.Trainer, lightning_module: L.LightningModule, checkpoint: Dict[str, Any]):
     def on_save_checkpoint(self, checkpoint):
-        checkpoint["teacher_model_name"] = self.args.teacher_model
         checkpoint["student_model_name"] = self.args.student_model
         checkpoint["code_name"] = self.args.output_dir.name
 
@@ -193,3 +180,25 @@ class KDForSentEmb(L.LightningModule):
             }
         ]
         return [optim], scheduler
+    
+class KDForSentEmb(SentEmb):
+    def __init__(self, args):
+        super().__init__(args)
+        self.teacher_model_config = None
+        self.linear = None
+
+    def configure_model(self):
+        super().configure_model()
+        self.teacher_model_config = AutoConfig.from_pretrained(
+            self.args.teacher_model,
+            trust_remote_code=True,
+        )
+        # up projection layer
+        self.linear = torch.nn.Linear(
+            self.student_model.get_sentence_embedding_dimension(),
+            self.teacher_model_config.hidden_size
+        )
+    # def on_save_checkpoint(self, trainer: L.Trainer, lightning_module: L.LightningModule, checkpoint: Dict[str, Any]):
+    def on_save_checkpoint(self, checkpoint):
+        super().on_save_checkpoint(checkpoint)
+        checkpoint["teacher_model_name"] = self.args.teacher_model

@@ -6,6 +6,7 @@ from torch import nn, Tensor
 from lightning import LightningModule
 from src.distil_losses import *
 from src.data import Batch
+from einops import einsum
 
 taid_forward_fn_map = {
     "ckd": CKD,
@@ -18,6 +19,56 @@ class LossOutput:
     loss: Tensor
     loss_dict: Dict[str, Tensor]
 
+class InfoCSE(nn.Module):
+    def __init__(self, args=None):
+        super().__init__()
+        self.use_pos = args.use_pos if hasattr(args, 'use_pos') else False
+        self.temp = args.cse_temp if hasattr(args, 'cse_temp') else 0.05
+
+    def forward(
+        self,
+        lightning_module: LightningModule,
+        batch: Batch,
+        validation: bool = False,
+        **kwargs,
+    ) -> LossOutput:
+        loss_dict = {}
+        features = lightning_module.student_model(batch)['sentence_embedding']
+        features = F.normalize(features, dim=-1)
+        # TODO: 複数GPUの場合、この辺りでGatherの処理が必要かもしれない
+        if "pos" in batch.keys() and "pos_features" in batch.keys():
+            pos_features = lightning_module.student_model(batch["pos"])['sentence_embedding']
+        else:
+            # unsupと同じように同じ文2回かける（dropoutでちょっと違う埋め込みになるはず）
+            pos_features = lightning_module.student_model(batch)['sentence_embedding']
+        pos_features = F.normalize(pos_features, dim=-1)
+            
+        loss = self.loss_fn(
+            features=features,
+            pos_features=pos_features
+        )
+        loss_dict = loss
+        return LossOutput(
+            loss=loss["loss"],
+            loss_dict=loss_dict,
+        )
+    def loss_fn(
+        self,
+        features: torch.Tensor,
+        pos_features: torch.Tensor,
+        **kwargs,
+    ) -> LossOutput:
+        labels = torch.arange(features.size(0), device=features.device)
+        # クエリとキー間の類似度スコアを計算 ab,cb->ac
+        scores = einsum(features, pos_features, 'b d, k d -> b k') / self.temp
+
+        # 対照学習損失：生徒埋め込みが対応する教師埋め込みに最も類似するように学習
+        loss = F.cross_entropy(scores, labels)
+
+        return LossOutput(
+            loss=loss,
+            loss_dict={"loss": loss},
+        )
 
 class KDLoss(nn.Module):
     def __init__(
@@ -43,7 +94,7 @@ class KDLoss(nn.Module):
         teacher_features = batch["teacher_features"]
         if isinstance(teacher_features, list):
             teacher_features = torch.stack(teacher_features, dim=0)
-        if "pos" in batch.keys() and "pos_features" in batch.keys():
+        if "pos" in batch.keys() and "pos_features" in batch.keys() and self.args.use_pos:
             pos_student_features = lightning_module.student_model(batch["pos"])['sentence_embedding']
             pos_projected_features = lightning_module.linear(pos_student_features)
             pos_teacher_features = batch["pos_features"]
@@ -70,6 +121,8 @@ class KDLoss(nn.Module):
 
 
 def get_loss_fn(args):
+    if args.loss_type == "infocse":
+        return InfoCSE(args)
     if "taid-" in args.loss_type:
         taid_forward_fn = args.loss_type.split("-")[1]
         distil_loss_fn = TAID(
@@ -86,7 +139,8 @@ def get_loss_fn(args):
         distil_loss_fn = MSE(args)
     elif args.loss_type == "kld":
         distil_loss_fn = KLD(args)
+    elif args.loss_type == "infocse":
+        distil_loss_fn = InfoCSE(args)
     else:
         raise NotImplementedError(args.loss_type)
-
     return KDLoss(distil_loss_fn=distil_loss_fn)
