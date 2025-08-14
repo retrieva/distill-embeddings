@@ -102,9 +102,9 @@ def encode_with_checkpoint(model, texts, batch_size, checkpoint_path, max_length
             show_progress_bar=False
         )
         all_features.extend(batch_features)
-        
-        # 定期的にチェックポイント保存（100バッチごと）
-        if (batch_idx + 1) % 100 == 0:
+
+        # 定期的にチェックポイント保存（1000バッチごと）
+        if (batch_idx + 1) % 1000 == 0:
             save_checkpoint(all_features, batch_idx + 1, checkpoint_path)
     
     # 完了時にチェックポイントファイルを削除
