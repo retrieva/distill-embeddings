@@ -20,7 +20,7 @@ for loss_type in "infocse"; do
         --val_check_interval 1 \
         --log_every_n_steps 1 \
         --language eng \
-        --use_pos \
+        --use_pos True\
         --loss_type "$loss_type"
 done
         # --mteb_eval \
