@@ -17,7 +17,7 @@ for loss_type in "infocse"; do
             --data_dir data \
             --dataset_name 1000000 \
             --output_dir output/result \
-            --batch_size 128 \
+            --batch_size 64 \
             --num_epochs 10 \
             --max_length 1024 \
             --val_check_interval 0.1 \
