@@ -21,7 +21,8 @@ class SentEmb(L.LightningModule):
             self.on_train_tasks = yaml.safe_load(file)[args.language]["on_train_tasks"]
         with open("tasks.yaml", 'r') as file:
             self.on_eval_tasks = yaml.safe_load(file)[args.language]["on_train_end_tasks"]
-
+        # argsをsave_hyperparametersで保存（wandbにも自動的に送信される）
+        self.save_hyperparameters(vars(args))
     def configure_model(self):
         self.student_model = SentenceTransformer(
             self.args.student_model,
@@ -96,6 +97,11 @@ class SentEmb(L.LightningModule):
             mteb_dict = {score.task_name: score.get_score() for score in scores}
             if self._save_mteb_flag(mteb_dict):
                 self.mteb_dict = mteb_dict
+            
+            # MTEBの結果をSummaryに保存
+            summary_dict = {f"mteb_epoch/{k}": v for k, v in mteb_dict.items()}
+            self.logger.experiment.summary.update(summary_dict)
+            
             self.log_dict(mteb_dict,logger=True,sync_dist=True)
             self.print(f"MTEB evaluation results: {mteb_dict}")
         except Exception as e:
@@ -121,26 +127,17 @@ class SentEmb(L.LightningModule):
                                         verbosity=1,
                                         encode_kwargs={"batch_size": self.args.batch_size},
                                         )
-            from mteb.leaderboard.table import create_tables
-            from mteb.load_results.benchmark_results import ModelResult
-            import pandas as pd
-            scores_long = ModelResult(model_name=self.args.student_model,
-                    model_revision=self.student_model.model_card_data.base_model_revision,
-                    task_results=scores).get_scores(format="long")
-
-            # Convert scores into leaderboard tables
-            summary_gr_df, per_task_gr_df = create_tables(scores_long=scores_long)
-
-            # Convert Gradio DataFrames to Pandas
-            summary_df = pd.DataFrame(
-                summary_gr_df.value["data"], columns=summary_gr_df.value["headers"]
-            )
-            per_task_df = pd.DataFrame(
-                per_task_gr_df.value["data"], columns=per_task_gr_df.value["headers"]
-            )
-            scores = pd.concat([summary_df, per_task_df], axis=1)
-            scores.to_csv(output_folder / "jmteb_scores.csv")
-            print(f"Scores saved to {output_folder / 'jmteb_scores.csv'}")
+            # MTEBの最終結果をSummaryに保存
+            final_mteb_dict = {score.task_name: score.get_score() for score in scores}
+            final_summary_dict = {f"mteb_final/{k}": v for k, v in final_mteb_dict.items()}
+            
+            # 平均スコアも計算して保存
+            avg_score = sum(final_mteb_dict.values()) / len(final_mteb_dict)
+            final_summary_dict["mteb_final/average"] = avg_score
+            
+            self.logger.experiment.summary.update(final_summary_dict)
+            
+            # ...existing code...
         except Exception as e:
             self.print(f"Error during MTEB evaluation: {e}")
             self.print("Skipping MTEB evaluation due to an error.")
