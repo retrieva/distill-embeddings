@@ -34,11 +34,12 @@ class DistilDataset(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx):
+        # mmap_mode='r'で読むと書き込み不可になるため、警告も出るし一応コピーしとく
         return {
             "anc": self.dataset[idx]["anc"],
-            "anc_features": self.embedding[self.dataset[idx]["anc_emb_idx"]],
+            "anc_features": self.embedding[self.dataset[idx]["anc_emb_idx"]].copy(),
             "pos": self.dataset[idx]["pos"],
-            "pos_features": self.embedding[self.dataset[idx]["pos_emb_idx"]]
+            "pos_features": self.embedding[self.dataset[idx]["pos_emb_idx"]].copy()
         }
 
 

@@ -12,6 +12,9 @@ wandb/
 logs
 temp/
 prev
+tasks_*.yaml
+prev*
+test.py
 
 # C extensions
 *.so
