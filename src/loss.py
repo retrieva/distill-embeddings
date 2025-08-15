@@ -37,7 +37,6 @@ class InfoCSE(nn.Module):
         features = F.normalize(features, dim=-1)
         # TODO: 複数GPUの場合、この辺りでGatherの処理が必要かもしれない
         if "pos" in batch.keys() and "pos_features" in batch.keys() and self.use_pos:
-            print("use positive!")
             pos_features = lightning_module.student_model(batch["pos"])['sentence_embedding']
         else:
             # unsupと同じように同じ文2回かける（dropoutでちょっと違う埋め込みになるはず）
@@ -95,7 +94,6 @@ class KDLoss(nn.Module):
         if isinstance(teacher_features, list):
             teacher_features = torch.stack(teacher_features, dim=0)
         if "pos" in batch.keys() and "pos_features" in batch.keys() and self.use_pos:
-            print("use positive!")
             pos_student_features = lightning_module.student_model(batch["pos"])['sentence_embedding']
             pos_projected_features = lightning_module.linear(pos_student_features)
             pos_teacher_features = batch["pos_features"]
