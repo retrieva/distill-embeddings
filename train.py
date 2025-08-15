@@ -12,7 +12,7 @@ if __name__ == "__main__":
     L.seed_everything(42, workers=True)
     # torch.set_float32_matmul_precision("high")
     data_path = Path(args.data_dir) / f"triplet-{args.language}" / f"{args.teacher_model.replace('/','_')}_encoded" / args.dataset_name
-    use_pos = "_w/pos" if args.use_pos else ""
+    use_pos = "_w-pos" if args.use_pos else ""
     code_name = f"e{args.num_epochs}_bs{args.batch_size}_lr{args.lr}_{args.loss_type}{use_pos}"
     args.output_dir = Path(args.output_dir) / args.student_model.replace('/', '_') / args.teacher_model.replace('/', '_') / args.dataset_name / code_name
     args.output_dir.mkdir(parents=True, exist_ok=True)
