@@ -199,7 +199,7 @@ def process_encoded_dataset(
     # 結合後のサイズも確認
     assert len(all_texts) == len(all_features), f"Combined data size mismatch: {len(all_texts)} vs {len(all_features)}"
 
-    all_texts.add_column('emb_idx', [i for i in range(len(all_texts))])
+    all_texts = all_texts.add_column(name='emb_idx', column=[i for i in range(len(all_texts))])
 
     # IDでグループ化
     grouped = {}
@@ -240,4 +240,4 @@ def process_encoded_dataset(
     if incomplete_pairs > 0:
         logger.warning(f"Found {incomplete_pairs} incomplete pairs (missing anc or pos)")
     
-    return all_features, all_texts
+    return all_features, Dataset.from_dict(reconstructed_data)
