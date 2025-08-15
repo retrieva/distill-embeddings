@@ -5,8 +5,13 @@ import torch
 import lightning as L
 from transformers import PreTrainedTokenizer
 from datasets import load_from_disk
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from dataclasses import dataclass
+import numpy as np
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -17,6 +22,25 @@ class Batch:
     pos: dict[str, torch.Tensor]
     teacher_features: torch.Tensor
     pos_features: torch.Tensor
+
+
+class DistilDataset(Dataset):
+    def __init__(self, dataset:Dataset, embedding:np.ndarray):
+        super().__init__()
+        self.dataset = dataset
+        self.embedding = embedding
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        return {
+            "anc": self.dataset[idx]["anc"],
+            "anc_features": self.embedding[self.dataset[idx]["anc_emb_idx"]],
+            "pos": self.dataset[idx]["pos"],
+            "pos_features": self.embedding[self.dataset[idx]["pos_emb_idx"]]
+        }
+
 
 class DataCollatorForDistill:
     def __init__(self, tokenizer: PreTrainedTokenizer, max_length: int = 4096):
@@ -33,8 +57,8 @@ class DataCollatorForDistill:
         )
 
     def __call__(self, samples):
-        texts = [s["text"] for s in samples]
-        teacher_features = [torch.Tensor(s["teacher_features"]) for s in samples]
+        texts = [s["anc"] for s in samples]
+        teacher_features = [torch.Tensor(s["anc_features"]) for s in samples]
         inputs = self.preprocess(texts)
 
         return {"input_ids": inputs["input_ids"],
@@ -87,7 +111,11 @@ class DataModuleForDistill(L.LightningDataModule):
 
     def setup(self, stage: str):
         datasets = load_from_disk(self.data_path)
-        self.datasets = datasets.train_test_split(test_size=int(min(len(datasets)*0.1, 1000)), seed=42, shuffle=True)
+        datasets = datasets.train_test_split(test_size=int(min(len(datasets)*0.1, 1000)), seed=42, shuffle=True)
+        embeddings = np.load(self.data_path / "emb.npy",  mmap_mode='r')
+        logger.info(f"Total samples: {len(datasets)}, embeddings: {embeddings.shape}")
+        self.datasets["train"] = DistilDataset(datasets["train"], embeddings)
+        self.datasets["test"] = DistilDataset(datasets["test"], embeddings)
 
     def train_dataloader(self):
         return DataLoader(
