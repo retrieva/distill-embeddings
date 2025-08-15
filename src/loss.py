@@ -33,7 +33,6 @@ class InfoCSE(nn.Module):
         validation: bool = False,
         **kwargs,
     ) -> LossOutput:
-        loss_dict = {}
         features = lightning_module.student_model(batch)['sentence_embedding']
         features = F.normalize(features, dim=-1)
         # TODO: 複数GPUの場合、この辺りでGatherの処理が必要かもしれない
@@ -49,11 +48,8 @@ class InfoCSE(nn.Module):
             features=features,
             pos_features=pos_features
         )
-        loss_dict = loss
-        return LossOutput(
-            loss=loss,
-            loss_dict=loss_dict,
-        )
+        return loss
+    
     def loss_fn(
         self,
         features: torch.Tensor,
