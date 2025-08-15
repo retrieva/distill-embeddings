@@ -3,12 +3,8 @@ import argparse
 from sentence_transformers import SentenceTransformer
 from pathlib import Path
 import torch
-import numpy as np
 import json
 import logging
-import pickle
-import os
-from tqdm import tqdm
 import pandas as pd
 
 # 共通ユーティリティをインポート
@@ -165,21 +161,24 @@ def main(args):
     if pool is not None:
         teacher_model.stop_multi_process_pool(pool)
     
+    # データサイズの整合性をチェック
+    assert len(long_texts) == len(long_teacher_features), f"Long texts size mismatch: {len(long_texts)} vs {len(long_teacher_features)}"
+    assert len(short_texts) == len(short_teacher_features), f"Short texts size mismatch: {len(short_texts)} vs {len(short_teacher_features)}"
+    
+    logger.info(f"Data size validation passed - Long: {len(long_texts)}, Short: {len(short_texts)}")
+    
     # 共通関数を使用してデータセット処理
-    reconstructed_dataset = process_encoded_dataset(
+    all_features, reconstructed_dataset = process_encoded_dataset(
         long_texts, short_texts, long_teacher_features, short_teacher_features
     )
-
-    output_path.mkdir(parents=True, exist_ok=True)
-    
     # 分割保存を使用
-    save_split_dataset(reconstructed_dataset, output_path)
+    save_split_dataset(reconstructed_dataset, all_features, output_path)
     json.dump(stats, open(output_path / "stats.json", "w"), indent=4)
     
-    # チェックポイントディレクトリをクリーンアップ
-    if checkpoint_dir.exists():
-        import shutil
-        shutil.rmtree(checkpoint_dir)
+    # # チェックポイントディレクトリをクリーンアップ
+    # if checkpoint_dir.exists():
+    #     import shutil
+    #     shutil.rmtree(checkpoint_dir)
     
     logger.info(f"Processing completed. Output saved to {output_path}")
 
