@@ -51,7 +51,7 @@ class InfoCSE(nn.Module):
         )
         loss_dict = loss
         return LossOutput(
-            loss=loss["loss"],
+            loss=loss,
             loss_dict=loss_dict,
         )
     def loss_fn(
