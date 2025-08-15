@@ -21,7 +21,7 @@ class CKD(DistilLoss):
     """
     def __init__(self, args: Optional[Dict] = None):
         super().__init__()
-        self.temp = args.ckd_temp if hasattr(args, 'ckd_temp') else 0.02
+        self.temp = args.ckd_temp if hasattr(args, 'ckd_temp') else 0.05
         self.max_queue_len = args.ckd_max_queue_len if hasattr(args, 'ckd_max_queue_len') else 65536
         self.teacher_queue = torch.tensor([])  # 教師埋め込みのキュー
         self.use_pos = args.use_pos if hasattr(args, 'use_pos') else False
@@ -52,7 +52,7 @@ class CKD(DistilLoss):
         self,
         student_features: torch.Tensor,
         teacher_features: torch.Tensor,
-        temp: float = 0.02,
+        temp: float = 0.05,
         validation: bool = False,
         **kwargs
     ) -> torch.Tensor:

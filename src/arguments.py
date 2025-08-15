@@ -37,8 +37,8 @@ def parse_args():
         "--num_workers", type=int, default=4, help="number of workers for data loader"
     )
     parser.add_argument("--lr", type=float, default=5e-5, help="learning rate")
-    parser.add_argument("--ckd_temp", type=float, default=0.02, help="CKD temperature")
-    parser.add_argument("--kld_temp", type=float, default=2.0, help="KLD temperature")
+    parser.add_argument("--ckd_temp", type=float, default=0.05, help="CKD temperature")
+    parser.add_argument("--kld_temp", type=float, default=1.0, help="KLD temperature")
     parser.add_argument("--cse_temp", type=float, default=0.05, help="InfoCSE temperature")
 
     # loss
