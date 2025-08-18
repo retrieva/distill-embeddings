@@ -36,17 +36,27 @@ class InfoCSE(nn.Module):
     ) -> LossOutput:
         features = lightning_module.student_model(batch)['sentence_embedding']
         features = F.normalize(features, dim=-1)
-        # TODO: 複数GPUの場合、この辺りでGatherの処理が必要かもしれない
+        # 2. 全てのGPUから 'features' を収集して結合
+        # all_gather はテンソルのリストを返します (例: [tensor_gpu0, tensor_gpu1, ...])
+        gathered_features_list = lightning_module.all_gather(features)
+        # リストを次元0で結合し、(world_size * batch_size_per_gpu, embedding_dim) のテンソルを作成
+        gathered_features = torch.cat(gathered_features_list, dim=0)
+        print(gathered_features.shape)
+
         if "pos" in batch.keys() and "pos_features" in batch.keys() and self.use_pos:
             pos_features = lightning_module.student_model(batch["pos"])['sentence_embedding']
         else:
             # unsupと同じように同じ文2回かける（dropoutでちょっと違う埋め込みになるはず）
             pos_features = lightning_module.student_model(batch)['sentence_embedding']
         pos_features = F.normalize(pos_features, dim=-1)
-            
+        # 3. 全てのGPUから 'pos_features' を収集して結合
+        gathered_pos_features_list = lightning_module.all_gather(pos_features)
+        gathered_pos_features = torch.cat(gathered_pos_features_list, dim=0)
+        print(gathered_pos_features.shape)
+
         loss = self.loss_fn(
-            features=features,
-            pos_features=pos_features
+            features=gathered_features,
+            pos_features=gathered_pos_features
         )
         return loss
     
@@ -90,26 +100,32 @@ class KDLoss(nn.Module):
         # Project student features to teacher's embedding space
         projected_features = lightning_module.linear(student_features)
 
-        # TODO: 複数GPUの場合、この辺りでGatherの処理が必要かもしれない
         teacher_features = batch["teacher_features"]
         if isinstance(teacher_features, list):
             teacher_features = torch.stack(teacher_features, dim=0)
+        # 3. 全GPUから学生・教師の特徴量を集約
+        gathered_projected_features = torch.cat(lightning_module.all_gather(projected_features), dim=0)
+        gathered_teacher_features = torch.cat(lightning_module.all_gather(teacher_features), dim=0)
         if self.use_pos:
             pos_student_features = lightning_module.student_model(batch["pos"])['sentence_embedding']
             pos_projected_features = lightning_module.linear(pos_student_features)
             pos_teacher_features = batch["pos_features"]
             if isinstance(pos_teacher_features, list):
                 pos_teacher_features = torch.stack(pos_teacher_features, dim=0)
+
+            # Positiveペアの特徴量も全GPUから集約
+            gathered_pos_projected_features = torch.cat(lightning_module.all_gather(pos_projected_features), dim=0)
+            gathered_pos_teacher_features = torch.cat(lightning_module.all_gather(pos_teacher_features), dim=0)
         else:
             pos_projected_features=None
             pos_teacher_features=None
             
         loss = self.distil_loss_fn(
-            lightning_module=lightning_module,
-            projected_features=projected_features,
-            teacher_features=teacher_features,
-            pos_projected_features=pos_projected_features,
-            pos_teacher_features=pos_teacher_features,
+           lightning_module=lightning_module,
+            projected_features=gathered_projected_features,
+            teacher_features=gathered_teacher_features,
+            pos_projected_features=gathered_pos_projected_features,
+            pos_teacher_features=gathered_pos_teacher_features,
             validation=validation,
             **kwargs,
         )
