@@ -43,27 +43,24 @@ class DistillLoss(DistilLoss):
         **kwargs
     ) -> torch.Tensor:
         """
-        対照学習ベースの知識蒸留損失を計算する関数
-        生徒埋め込みが教師埋め込みに最も類似するように学習する。
         """
+        loss_dict = {}
+        distill_loss = F.cross_entropy(student_features / self.temp_s, F.softmax(teacher_features / self.temp_t, dim=-1))
         # 各サンプルのインデックスをラベルとする（対角要素が正解）
         labels = torch.arange(student_features.size(0), device=student_features.device)
-        student_features = F.normalize(student_features, dim=-1)
-        teacher_features = F.normalize(teacher_features, dim=-1)
-        scores = einsum(student_features, teacher_features, 'b d, k d -> b k') / temp
         # 生徒と教師の埋め込みを正規化
         # ２回やっちゃっても結果は一緒のはず
-        key = torch.cat([teacher_features, self.teacher_queue.to(student_features.device)], dim=0)
-
+        student_features = F.normalize(student_features, dim=-1)
+        teacher_features = F.normalize(teacher_features, dim=-1)
         # クエリとキー間の類似度スコアを計算 ab,cb->ac
-        scores = einsum(student_features, key, 'b d, k d -> b k') / temp
+        scores = einsum(student_features, teacher_features, 'b d, k d -> b k') / temp
 
         # 対照学習損失：生徒埋め込みが対応する教師埋め込みに最も類似するように学習
-        loss = F.cross_entropy(scores, labels)
-        if not validation:
-            self.teacher_queue = key[:key.shape[0] - max(key.shape[0] - self.max_queue_len, 0)]
-            self.teacher_queue = self.teacher_queue.detach().cpu()  # 勾配を伝播しないようにする
-        return loss, {"loss": loss, "teacher_queue_length": self.teacher_queue.shape[0]}
+        cse_loss = F.cross_entropy(scores, labels)
+        loss_dict["distill_loss"] = distill_loss
+        loss_dict["cse_loss"] = cse_loss
+        loss_dict["loss"] = cse_loss + distill_loss
+        return loss_dict["loss"], loss_dict
     
     def forward(
         self,
@@ -86,7 +83,7 @@ class DistillLoss(DistilLoss):
         loss, loss_dict = self.compute_loss(
             projected_features,
             teacher_features,
-            temp=self.temp,
+            temp=self.temp_cse,
             validation=validation,
         )
         return loss_dict

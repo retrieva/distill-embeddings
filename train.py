@@ -28,7 +28,6 @@ if __name__ == "__main__":
         num_workers=args.num_workers,
         max_length=args.max_length
     )
-    import pdb; pdb.set_trace()  # Debugging breakpoint
 
     modelcheckpoint = ModelCheckpoint(
         monitor="val_0/loss",
