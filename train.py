@@ -7,11 +7,12 @@ from src.arguments import parse_args
 from pathlib import Path
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.strategies import DeepSpeedStrategy
+import torch
 
 if __name__ == "__main__":
     args = parse_args()
     L.seed_everything(42, workers=True)
-    # torch.set_float32_matmul_precision("high")
+    torch.set_float32_matmul_precision("high")
     data_path = Path(args.data_dir) / f"triplet-{args.language}" / f"{args.teacher_model.replace('/','_')}_encoded" / args.dataset_name
     use_pos = "_w-pos" if args.use_pos else ""
     code_name = f"e{args.num_epochs}_bs{args.batch_size}_lr{args.lr}_{args.loss_type}{use_pos}"
@@ -27,7 +28,8 @@ if __name__ == "__main__":
         num_workers=args.num_workers,
         max_length=args.max_length
     )
-    # 実装しなきゃ
+    import pdb; pdb.set_trace()  # Debugging breakpoint
+
     modelcheckpoint = ModelCheckpoint(
         monitor="val_0/loss",
         mode="max",
