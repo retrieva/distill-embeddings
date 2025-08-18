@@ -34,29 +34,25 @@ class InfoCSE(nn.Module):
         validation: bool = False,
         **kwargs,
     ) -> LossOutput:
-        features = lightning_module.student_model(batch)['sentence_embedding']
-        features = F.normalize(features, dim=-1)
-        # 2. 全てのGPUから 'features' を収集して結合
-        # all_gather はテンソルのリストを返します (例: [tensor_gpu0, tensor_gpu1, ...])
-        gathered_features_list = lightning_module.all_gather(features)
-        # リストを次元0で結合し、(world_size * batch_size_per_gpu, embedding_dim) のテンソルを作成
-        gathered_features = torch.cat(gathered_features_list, dim=0)
-        print(gathered_features.shape)
-
+        local_features = lightning_module.student_model(batch)['sentence_embedding']
+        local_features = F.normalize(local_features, dim=-1)
+        # (gpu_num, bs, dim)
+        gathered_features = lightning_module.all_gather(local_features,sync_grads=True)
+        # (gpu_num x bs, dim)
+        global_features = gathered_features.view(-1, gathered_features.shape[-1])
         if "pos" in batch.keys() and "pos_features" in batch.keys() and self.use_pos:
-            pos_features = lightning_module.student_model(batch["pos"])['sentence_embedding']
+            local_pos_features = lightning_module.student_model(batch["pos"])['sentence_embedding']
         else:
             # unsupと同じように同じ文2回かける（dropoutでちょっと違う埋め込みになるはず）
-            pos_features = lightning_module.student_model(batch)['sentence_embedding']
-        pos_features = F.normalize(pos_features, dim=-1)
+            local_pos_features = lightning_module.student_model(batch)['sentence_embedding']
+        local_pos_features = F.normalize(local_pos_features, dim=-1)
         # 3. 全てのGPUから 'pos_features' を収集して結合
-        gathered_pos_features_list = lightning_module.all_gather(pos_features)
-        gathered_pos_features = torch.cat(gathered_pos_features_list, dim=0)
-        print(gathered_pos_features.shape)
+        gathered_pos_features_list = lightning_module.all_gather(local_pos_features,sync_grads=True)
+        global_pos_features = gathered_pos_features_list.view(-1, gathered_pos_features_list.shape[-1])
 
         loss = self.loss_fn(
-            features=gathered_features,
-            pos_features=gathered_pos_features
+            features=global_features,
+            pos_features=global_pos_features
         )
         return loss
     
@@ -96,36 +92,43 @@ class KDLoss(nn.Module):
         **kwargs,
     ) -> LossOutput:
         loss_dict = {}
-        student_features = lightning_module.student_model(batch)['sentence_embedding']
+        local_student_features = lightning_module.student_model(batch)['sentence_embedding']
         # Project student features to teacher's embedding space
-        projected_features = lightning_module.linear(student_features)
+        local_projected_features = lightning_module.linear(local_student_features)
 
-        teacher_features = batch["teacher_features"]
-        if isinstance(teacher_features, list):
-            teacher_features = torch.stack(teacher_features, dim=0)
+        local_teacher_features = batch["teacher_features"]
+        if isinstance(local_teacher_features, list):
+            local_teacher_features = torch.stack(local_teacher_features, dim=0)
         # 3. 全GPUから学生・教師の特徴量を集約
-        gathered_projected_features = torch.cat(lightning_module.all_gather(projected_features), dim=0)
-        gathered_teacher_features = torch.cat(lightning_module.all_gather(teacher_features), dim=0)
+        # (gpu_num, bs, dim)
+        gathered_projected_features = lightning_module.all_gather(local_projected_features,sync_grads=True)
+        # (gpu_num x bs, dim)
+        global_projected_features = gathered_projected_features.view(-1, gathered_projected_features.shape[-1])
+
+        gathered_teacher_features = lightning_module.all_gather(local_teacher_features,sync_grads=True)
+        global_teacher_features = gathered_teacher_features.view(-1, gathered_teacher_features.shape[-1])
         if self.use_pos:
-            pos_student_features = lightning_module.student_model(batch["pos"])['sentence_embedding']
-            pos_projected_features = lightning_module.linear(pos_student_features)
-            pos_teacher_features = batch["pos_features"]
-            if isinstance(pos_teacher_features, list):
-                pos_teacher_features = torch.stack(pos_teacher_features, dim=0)
+            local_pos_student_features = lightning_module.student_model(batch["pos"])['sentence_embedding']
+            local_pos_projected_features = lightning_module.linear(local_pos_student_features)
+            local_pos_teacher_features = batch["pos_features"]
+            if isinstance(local_pos_teacher_features, list):
+                local_pos_teacher_features = torch.stack(local_pos_teacher_features, dim=0)
 
             # Positiveペアの特徴量も全GPUから集約
-            gathered_pos_projected_features = torch.cat(lightning_module.all_gather(pos_projected_features), dim=0)
-            gathered_pos_teacher_features = torch.cat(lightning_module.all_gather(pos_teacher_features), dim=0)
+            gathered_pos_projected_features = lightning_module.all_gather(local_pos_projected_features,sync_grads=True)
+            global_pos_projected_features = gathered_pos_projected_features.view(-1, gathered_pos_projected_features.shape[-1])
+            gathered_pos_teacher_features = lightning_module.all_gather(local_pos_teacher_features,sync_grads=True)
+            global_pos_teacher_features = gathered_pos_teacher_features.view(-1, gathered_pos_teacher_features.shape[-1])
         else:
-            pos_projected_features=None
-            pos_teacher_features=None
+            global_pos_projected_features=None
+            global_pos_teacher_features=None
             
         loss = self.distil_loss_fn(
            lightning_module=lightning_module,
-            projected_features=gathered_projected_features,
-            teacher_features=gathered_teacher_features,
-            pos_projected_features=gathered_pos_projected_features,
-            pos_teacher_features=gathered_pos_teacher_features,
+            projected_features=global_projected_features,
+            teacher_features=global_teacher_features,
+            pos_projected_features=global_pos_projected_features,
+            pos_teacher_features=global_pos_teacher_features,
             validation=validation,
             **kwargs,
         )
