@@ -101,7 +101,7 @@ def parse_args():
     parser.add_argument("--language", type=str, default="eng",
         help="language for experiment",
     )
-    parser.add_argument("--use_pos",type=bool, default=True,
+    parser.add_argument("--use_pos",action="store_true",
         help="use positive samples(contrastive)",
     )
     
