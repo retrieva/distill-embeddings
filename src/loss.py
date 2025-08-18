@@ -93,7 +93,7 @@ class KDLoss(nn.Module):
         teacher_features = batch["teacher_features"]
         if isinstance(teacher_features, list):
             teacher_features = torch.stack(teacher_features, dim=0)
-        if "pos" in batch.keys() and "pos_features" in batch.keys() and self.use_pos:
+        if self.use_pos:
             pos_student_features = lightning_module.student_model(batch["pos"])['sentence_embedding']
             pos_projected_features = lightning_module.linear(pos_student_features)
             pos_teacher_features = batch["pos_features"]
