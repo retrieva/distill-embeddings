@@ -160,6 +160,8 @@ def get_loss_fn(args):
         distil_loss_fn = KLD(args)
     elif args.loss_type == "js":
         distil_loss_fn = JasperStella(args)
+    elif args.loss_type == "distill":
+        distil_loss_fn = DistillLoss(args)
     elif args.loss_type == "infocse":
         distil_loss_fn = InfoCSE(args)
     else:
