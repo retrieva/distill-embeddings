@@ -15,6 +15,7 @@ prev
 tasks_*.yaml
 prev*
 test.py
+wandb*_charts/
 
 # C extensions
 *.so

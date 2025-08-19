@@ -20,6 +20,7 @@ dependencies = [
     "plotly>=6.3.0",
     "polars>=1.32.0",
     "pyyaml>=6.0.2",
+    "seaborn>=0.13.2",
     "sentence-transformers>=5.0.0",
     "sentencepiece>=0.2.0",
     "torch>=2.7.1",
