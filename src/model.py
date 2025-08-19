@@ -81,7 +81,11 @@ class SentEmb(L.LightningModule):
     def on_train_epoch_end(self):
         if not self.args.mteb_eval:
             return
+            # 評価処理全体をメインプロセス (rank 0) でのみ実行するようにガードする
+        if not self.trainer.is_global_zero:
+            return
         try:
+            self.print("🚀 Starting MTEB evaluation on global_rank 0...")
             # MTEB evaluation
             output_folder = self.args.output_dir / "mteb_eval"
             evaluation = mteb.MTEB(tasks=self.on_train_tasks, task_langs=[self.args.language],)
@@ -102,7 +106,7 @@ class SentEmb(L.LightningModule):
             summary_dict = {f"mteb_epoch/{k}": v for k, v in mteb_dict.items()}
             self.logger.experiment.summary.update(summary_dict)
             
-            self.log_dict(mteb_dict,logger=True,sync_dist=True)
+            self.log_dict(mteb_dict, logger=True, sync_dist=False)
             self.print(f"MTEB evaluation results: {mteb_dict}")
         except Exception as e:
             self.print(f"Error during MTEB evaluation: {e}")
