@@ -66,7 +66,10 @@ class CKD(DistilLoss):
         # ２回やっちゃっても結果は一緒のはず
         student_features = F.normalize(student_features, dim=-1)
         teacher_features = F.normalize(teacher_features, dim=-1)
-        key = torch.cat([teacher_features, self.teacher_queue.to(student_features.device)], dim=0)
+        
+        # teacher_queueのデータ型をstudent_featuresに合わせる
+        teacher_queue = self.teacher_queue.to(student_features.device, dtype=student_features.dtype)
+        key = torch.cat([teacher_features, teacher_queue], dim=0)
 
         # クエリとキー間の類似度スコアを計算 ab,cb->ac
         scores = einsum(student_features, key, 'b d, k d -> b k') / temp
