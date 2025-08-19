@@ -25,6 +25,6 @@ for loss_type in "infocse"; do
         --mteb_eval \
         --language "eng" \
         --taid_t_start 0.6 \
-        --use_pos
+        --use_pos \
         --loss_type "$loss_type"
 done
