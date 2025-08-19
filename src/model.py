@@ -102,10 +102,6 @@ class SentEmb(L.LightningModule):
             if self._save_mteb_flag(mteb_dict):
                 self.mteb_dict = mteb_dict
             
-            # MTEBの結果をSummaryに保存
-            summary_dict = {f"mteb_epoch/{k}": v for k, v in mteb_dict.items()}
-            self.logger.experiment.summary.update(summary_dict)
-            
             self.log_dict(mteb_dict, logger=True, sync_dist=False)
             self.print(f"MTEB evaluation results: {mteb_dict}")
         except Exception as e:
