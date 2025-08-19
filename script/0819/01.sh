@@ -3,7 +3,7 @@
 #PJM -L gpu=1
 #PJM -L elapse=72:00:00
 #PJM -j
-#PJM -o logs/0818/01.log
+#PJM -o logs/0819/01.log
 
 module load cuda cudnn nccl gcc
 
