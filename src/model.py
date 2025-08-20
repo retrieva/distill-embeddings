@@ -136,8 +136,6 @@ class SentEmb(L.LightningModule):
             final_summary_dict["mteb_final/average"] = avg_score
             
             self.logger.experiment.summary.update(final_summary_dict)
-            
-            # ...existing code...
         except Exception as e:
             self.print(f"Error during MTEB evaluation: {e}")
             self.print("Skipping MTEB evaluation due to an error.")
