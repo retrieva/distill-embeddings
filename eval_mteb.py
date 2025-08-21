@@ -25,7 +25,8 @@ def main(args):
         # 2. SentenceTransformerモデルを直接ロード
         model = SentenceTransformer(model_name)
         output_folder = Path("output") / model_name.replace("/", "_")
-    evaluation = mteb.MTEB(tasks=tasks, task_langs=["eng"],)
+    # evaluation = mteb.MTEB(tasks=tasks, task_langs=["eng"],)
+    evaluation = mteb.MTEB(tasks=["MSMARCOHardNegatives"], task_langs=["eng"],)
     # evaluation.tasks[0].calculate_metadata_metrics()
     import warnings
     with warnings.catch_warnings():
@@ -39,7 +40,7 @@ def main(args):
 
     # Convert scores into leaderboard tables
     summary_gr_df, per_task_gr_df = create_tables(scores_long=scores_long)
-
+    print(per_task_gr_df.value)
     # Convert Gradio DataFrames to Pandas
     summary_df = pd.DataFrame(
         summary_gr_df.value["data"], columns=summary_gr_df.value["headers"]
