@@ -104,5 +104,8 @@ def parse_args():
     parser.add_argument("--use_pos",action="store_true",
         help="use positive samples(contrastive)",
     )
-    
+    parser.add_argument("--your_run_id", type=str, default=None,
+                        help="your run id")
+    parser.add_argument("--ckpt_path", type=str, default=None,
+                        help="path to the checkpoint file")
     return parser.parse_args()
