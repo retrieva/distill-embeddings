@@ -1,9 +1,9 @@
 #!/bin/sh
 #PJM -L rscgrp=b-batch
 #PJM -L gpu=1
-#PJM -L elapse=5:00:00
+#PJM -L elapse=10:00:00
 #PJM -j
-#PJM -o logs/0821/02.log
+#PJM -o logs/0821/03.log
 
 module load cuda cudnn nccl gcc
 
