@@ -42,7 +42,6 @@ if __name__ == "__main__":
         log_every_n_steps=args.log_every_n_steps,
         precision="bf16-mixed",
         num_sanity_val_steps=0,
-        ckpt_path=args.ckpt_path,
         callbacks=[modelcheckpoint],
         strategy=DeepSpeedStrategy(
             stage=2, allgather_bucket_size=5e8, reduce_bucket_size=5e8
@@ -59,4 +58,4 @@ if __name__ == "__main__":
     )
     if args.validate_first:
         trainer.validate(model, data)
-    trainer.fit(model, data)
+    trainer.fit(model, data, ckpt_path=args.ckpt_path if args.ckpt_path else None)
