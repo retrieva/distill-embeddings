@@ -6,12 +6,13 @@ import os
 api = wandb.Api()
 filters = {
     "$and": [
-        {"config.num_epochs": {"$gte": 2}},
-        {"tags": "Qwen_Qwen3-Embedding-0.6B_encoded"},
+        {"config.num_epochs": {"$gte": 3}},
+        {"config.batch_size": {"$gte": 64}},
+        {"tags": "Qwen_Qwen3-Embedding-4B_encoded"},
         {"state": "finished"}
     ]
 }
-group_code_name = "ep2_0.6B"
+group_code_name = "ep3_bs64_4B"
 runs = api.runs("retrieva-research/distillation", filters=filters)
 
 # --- 4. summaryデータの取得と結合 ---
@@ -34,7 +35,7 @@ for run in runs:
 # --- 5. CSVファイルを生成 ---
 if all_summaries:
     combined_df = pd.DataFrame(all_summaries)
-    output_dir = "wandb_csv_output"
+    output_dir = "wandb_agg_output"
     os.makedirs(output_dir, exist_ok=True)
 
     # run_nameを除いたメトリクス名を取得
