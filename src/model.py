@@ -172,7 +172,7 @@ class SentEmb(L.LightningModule):
         self.logger.experiment.summary.update(score_dict)
     
     def on_train_end(self) -> None:
-        self.on_train_end_mteb()
+        self._on_train_end_mteb()
         self.get_id_iso_score()
 
     def on_save_checkpoint(self, checkpoint):
