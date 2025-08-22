@@ -152,9 +152,46 @@ jpn
 ## 訓練データ
 
 ### 日本語
+`cl-nagoya/ruri-dataset-v2-pt`から、いくつかの不適切そうな？データセットを排除して利用
+主に簡単すぎる言い換えデータ、多すぎるWikiドメインを削った
+合計1Mになるように割合そのまま減らした
 
+排除したデータ↓
+```
+        "wordnet-ja-synonyms",
+        "wordnet-ja-same-synsets",
+        "word-ja-definitions",
+        "ihyoki",
+        "jawiki-paragraphs1",
+        "jawiki-hyperlinks",
+        "wiki-summary-title2text",
+        "wiki-summary-text2text",
+        "wiki-para-text2text",
+        "wiki-para-title2text",
+        "wiki-qa",
+```
 
 ### 英語
+`sentence-transformers/embedding-training-data`からいくつか排除
+主に似たようなデータがたくさんあるもの、ライセンスが怪しいもんを削った
+各データMAX1Mに削って、そこから合計1Mになるように割合そのまま減らした
+
+```
+        "altlex",
+        "WikiAnswers",
+        "S2ORC_citations_titles",
+        "specter_train_triples",
+        "yahoo_answers_question_answer",
+        "yahoo_answers_title_question",
+        "cnn_dailymail_splitted",
+        "S2ORC_citations_abstracts",
+
+        "msmarco-triples",
+        "quora_duplicates",
+        "quora_duplicates_triplets",
+        "PAQ_pairs",
+        "flickr30k_captions"
+```
 
 
 
@@ -162,8 +199,12 @@ jpn
 
 バッチサイズ：なるべく大きくしたいので、社内サーバ16, 玄界64
 
-最大系列長：4096
+最大系列長：512
 
 学習率：5e-05
 
 各種損失にくっついている温度などのハイパラ：元実装を参考にそのまま
+
+スケジューラ：cosine -> WSDにしてみた
+
+同時にWarm up ratioを0.1から0.05に
