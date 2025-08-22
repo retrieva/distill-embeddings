@@ -102,6 +102,9 @@ def parse_args():
     parser.add_argument("--mteb_eval",action="store_true",
         help="run MTEB evaluation at the end of training",
     )
+    parser.add_argument("--get_id_iso",action="store_true",
+        help="get intrinsic dimension and iso score",
+    )
     parser.add_argument("--language", type=str, default="eng",
         help="language for experiment",
     )

@@ -15,12 +15,13 @@ for loss_type in "kld"; do
         --dataset_name 1000 \
         --output_dir output/result \
         --batch_size 4 \
-        --num_epochs 3 \
+        --num_epochs 1 \
         --max_length 4096 \
         --val_check_interval 1 \
         --log_every_n_steps 1 \
-        --mteb_eval \
         --language eng \
+        --get_id_iso \
+        --use_pos \
         --loss_type "$loss_type"
 done
         # --mteb_eval \

@@ -9,6 +9,18 @@ from src.data import Batch
 from src.scheduler import get_scheduler
 import mteb
 import yaml
+from IsoScore.IsoScore import *
+import pandas as pd
+from sentence_transformers import SentenceTransformer
+from argparse import ArgumentParser
+import skdim
+
+PROMPT_MAP = {
+    "none": "",
+    "retrieval": "Given a question, retrieve passages that answer the question",
+    "sts": "Retrieve semantically similar text",
+    "classification": "Given a text, classify its topic"
+}
 
 class SentEmb(L.LightningModule):
     def __init__(self, args):
@@ -111,8 +123,8 @@ class SentEmb(L.LightningModule):
 
     def _save_mteb_flag(self,mteb_dict:dict) -> bool:
         return True
-
-    def on_train_end(self) -> None:
+    
+    def _on_train_end_mteb(self):
         if not self.args.mteb_eval:
             return
         try:
@@ -140,6 +152,28 @@ class SentEmb(L.LightningModule):
         except Exception as e:
             self.print(f"Error during MTEB evaluation: {e}")
             self.print("Skipping MTEB evaluation due to an error.")
+
+    def get_id_iso_score(self):
+        if not self.args.get_id_iso:
+            return
+        score_dict = {}
+        simple_wiki = pd.read_json("data/triplet-eng/SimpleWiki.jsonl",lines=True,orient="records")
+        texts = simple_wiki.sample(10000,random_state=42)["anc"].unique().tolist()
+        for prompt_name, prompt in PROMPT_MAP.items():
+            print(f"Calculating IsoScore for model: {self.args.student_model}, prompt: {prompt_name}")
+            model = SentenceTransformer(self.args.student_model)
+            embeddings = model.encode(texts, convert_to_tensor=True, prompt=prompt).to("cpu")
+            twonn = skdim.id.TwoNN()
+            twonn.fit(embeddings)
+            intrinsic_dimension_twonn = twonn.dimension_
+            iso_score = IsoScore(embeddings)
+            score_dict[f"{prompt_name}/iso_score"] = iso_score
+            score_dict[f"{prompt_name}/id"] = intrinsic_dimension_twonn
+        self.logger.experiment.summary.update(score_dict)
+    
+    def on_train_end(self) -> None:
+        self.on_train_end_mteb()
+        self.get_id_iso_score()
 
     def on_save_checkpoint(self, checkpoint):
         checkpoint["student_model_name"] = self.args.student_model
