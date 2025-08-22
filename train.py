@@ -15,7 +15,10 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("high")
     data_path = Path(args.data_dir) / f"triplet-{args.language}" / f"{args.teacher_model.replace('/','_')}_encoded" / args.dataset_name
     use_pos = "_w-pos" if args.use_pos else ""
-    code_name = f"e{args.num_epochs}_bs{args.batch_size}_lr{args.lr}_{args.loss_type}{use_pos}"
+    # GPU数を取得してグローバルバッチサイズを計算
+    num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
+    global_batch_size = args.batch_size * num_devices
+    code_name = f"e{args.num_epochs}_bs{global_batch_size}_{args.scheduler}{args.lr}_{args.loss_type}{use_pos}"
     args.output_dir = Path(args.output_dir) / args.student_model.replace('/', '_') / args.teacher_model.replace('/', '_') / args.dataset_name / code_name
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -30,8 +33,10 @@ if __name__ == "__main__":
     )
 
     modelcheckpoint = ModelCheckpoint(
-        save_last=True,
-        every_n_epochs=1
+        dirpath=args.output_dir / "checkpoints",
+        filename="{epoch:02d}",
+        every_n_epochs=1,
+        save_top_k=-1 
     )
     lr_monitor = LearningRateMonitor(logging_interval='step')
     trainer = L.Trainer(
