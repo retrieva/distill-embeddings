@@ -160,7 +160,7 @@ class SentEmb(L.LightningModule):
         optim = torch.optim.AdamW(self.student_model.parameters(),lr=self.args.lr)
         num_training_steps = self.trainer.estimated_stepping_batches
         scheduler = get_scheduler(
-            name="wsd",
+            name=self.args.scheduler,
             optimizer=optim,
             num_training_steps=num_training_steps,
             num_warmup_steps=self.args.warmup_ratio * num_training_steps,
