@@ -38,7 +38,7 @@ class KLD(DistilLoss):
         student_log_probs = F.log_softmax(sim_s, dim=1, dtype=torch.float32)
         # KL(teacher || student) を計算
         kl_loss = F.kl_div(student_log_probs, teacher_probs, reduction='batchmean')
-        kl_loss = kl_loss * (self.temp ** 2)  # 温度パラメータで調整
+        kl_loss = kl_loss * (max(1.0, self.temp ** 2))  # 温度パラメータで調整
 
         return kl_loss, {"loss": kl_loss, "temp": self.temp}
 
