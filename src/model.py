@@ -2,10 +2,11 @@ from typing import Dict, Any
 import torch
 from torch import Tensor
 import lightning as L
-from transformers import get_scheduler, AutoConfig
+from transformers import AutoConfig
 from src.loss import get_loss_fn, LossOutput
 from sentence_transformers import SentenceTransformer
 from src.data import Batch
+from src.scheduler import get_scheduler
 import mteb
 import yaml
 
@@ -159,7 +160,7 @@ class SentEmb(L.LightningModule):
         optim = torch.optim.AdamW(self.student_model.parameters(),lr=self.args.lr)
         num_training_steps = self.trainer.estimated_stepping_batches
         scheduler = get_scheduler(
-            name="cosine",
+            name="wsd",
             optimizer=optim,
             num_training_steps=num_training_steps,
             num_warmup_steps=self.args.warmup_ratio * num_training_steps,

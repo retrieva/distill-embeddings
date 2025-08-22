@@ -86,8 +86,12 @@ def parse_args():
     parser.add_argument(
         "--warmup_ratio",
         type=float,
-        default=0.1,
+        default=0.05,
         help="warmup ratio for learning rate scheduler",
+    )
+    parser.add_argument("--scheduler",type=str, default="cosine",
+        choices=["constant", "wsd", "cosine"],
+        help="scheduler type",
     )
     parser.add_argument(
         "--max_length",

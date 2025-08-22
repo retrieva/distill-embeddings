@@ -5,7 +5,7 @@ from src.data import DataModuleForDistill
 from src.model import KDForSentEmb
 from src.arguments import parse_args
 from pathlib import Path
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 from lightning.pytorch.strategies import DeepSpeedStrategy
 import torch
 
@@ -30,11 +30,10 @@ if __name__ == "__main__":
     )
 
     modelcheckpoint = ModelCheckpoint(
-        monitor="val_0/loss",
-        mode="max",
-        save_top_k=1,
         save_last=True,
+        every_n_epochs=1
     )
+    lr_monitor = LearningRateMonitor(logging_interval='step')
     trainer = L.Trainer(
         devices="auto",
         max_epochs=args.num_epochs,
@@ -42,7 +41,7 @@ if __name__ == "__main__":
         log_every_n_steps=args.log_every_n_steps,
         precision="bf16-mixed",
         num_sanity_val_steps=0,
-        callbacks=[modelcheckpoint],
+        callbacks=[modelcheckpoint,lr_monitor],
         strategy=DeepSpeedStrategy(
             stage=2, allgather_bucket_size=5e8, reduce_bucket_size=5e8
         ),
