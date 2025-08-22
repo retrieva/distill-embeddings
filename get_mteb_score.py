@@ -29,7 +29,7 @@ def main():
         
     with open("tasks.yaml", 'r') as file:
         tasks = yaml.safe_load(file)
-        tasks = tasks[args.lang]["on_eval_tasks"]
+        tasks = tasks[args.lang]["on_train_end_tasks"]
     
     print(f"評価言語: {args.lang}")
     print(f"タスク数: {len(tasks)}")
