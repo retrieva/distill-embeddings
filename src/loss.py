@@ -93,41 +93,40 @@ class KDLoss(nn.Module):
     ) -> LossOutput:
         loss_dict = {}
         local_student_features = lightning_module.student_model(batch)['sentence_embedding']
-        # Project student features to teacher's embedding space
-        local_projected_features = lightning_module.linear(local_student_features)
 
         local_teacher_features = batch["teacher_features"]
         if isinstance(local_teacher_features, list):
             local_teacher_features = torch.stack(local_teacher_features, dim=0)
+        local_teacher_features = local_teacher_features[:,:local_student_features.shape[1]]
         # 3. 全GPUから学生・教師の特徴量を集約
         # (gpu_num, bs, dim)
-        gathered_projected_features = lightning_module.all_gather(local_projected_features,sync_grads=True)
+        gathered_student_features = lightning_module.all_gather(local_student_features,sync_grads=True)
         # (gpu_num x bs, dim)
-        global_projected_features = gathered_projected_features.view(-1, gathered_projected_features.shape[-1])
+        global_student_features = gathered_student_features.view(-1, gathered_student_features.shape[-1])
 
         gathered_teacher_features = lightning_module.all_gather(local_teacher_features,sync_grads=True)
         global_teacher_features = gathered_teacher_features.view(-1, gathered_teacher_features.shape[-1])
         if self.use_pos:
             local_pos_student_features = lightning_module.student_model(batch["pos"])['sentence_embedding']
-            local_pos_projected_features = lightning_module.linear(local_pos_student_features)
             local_pos_teacher_features = batch["pos_features"]
             if isinstance(local_pos_teacher_features, list):
                 local_pos_teacher_features = torch.stack(local_pos_teacher_features, dim=0)
+            local_pos_teacher_features = local_pos_teacher_features[:,:local_pos_student_features.shape[1]]
 
             # Positiveペアの特徴量も全GPUから集約
-            gathered_pos_projected_features = lightning_module.all_gather(local_pos_projected_features,sync_grads=True)
-            global_pos_projected_features = gathered_pos_projected_features.view(-1, gathered_pos_projected_features.shape[-1])
+            gathered_pos_student_features = lightning_module.all_gather(local_pos_student_features,sync_grads=True)
+            global_pos_student_features = gathered_pos_student_features.view(-1, gathered_pos_student_features.shape[-1])
             gathered_pos_teacher_features = lightning_module.all_gather(local_pos_teacher_features,sync_grads=True)
             global_pos_teacher_features = gathered_pos_teacher_features.view(-1, gathered_pos_teacher_features.shape[-1])
         else:
-            global_pos_projected_features=None
+            global_pos_student_features=None
             global_pos_teacher_features=None
             
         loss = self.distil_loss_fn(
            lightning_module=lightning_module,
-            projected_features=global_projected_features,
+            projected_features=global_student_features,
             teacher_features=global_teacher_features,
-            pos_projected_features=global_pos_projected_features,
+            pos_projected_features=global_pos_student_features,
             pos_teacher_features=global_pos_teacher_features,
             validation=validation,
             **kwargs,

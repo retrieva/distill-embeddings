@@ -181,7 +181,7 @@ class KDForSentEmb(SentEmb):
     def __init__(self, args):
         super().__init__(args)
         self.teacher_model_config = None
-        self.linear = None
+        # self.linear = None
 
     def configure_model(self):
         super().configure_model()
@@ -189,11 +189,11 @@ class KDForSentEmb(SentEmb):
             self.args.teacher_model,
             trust_remote_code=True,
         )
-        # up projection layer
-        self.linear = torch.nn.Linear(
-            self.student_model.get_sentence_embedding_dimension(),
-            self.teacher_model_config.hidden_size
-        )
+        # # up projection layer
+        # self.linear = torch.nn.Linear(
+        #     self.student_model.get_sentence_embedding_dimension(),
+        #     self.teacher_model_config.hidden_size
+        # )
     # def on_save_checkpoint(self, trainer: L.Trainer, lightning_module: L.LightningModule, checkpoint: Dict[str, Any]):
     def on_save_checkpoint(self, checkpoint):
         super().on_save_checkpoint(checkpoint)
