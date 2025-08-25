@@ -56,10 +56,10 @@ def main(args):
     subset_to_num_examples = {}
     subset_to_target_num_examples = {}
     for subset, info in dataset_summary.items():
-        subset_to_num_examples[subset] = max(info["len"], 1_000_000)
+        subset_to_num_examples[subset] = min(info["len"], 1_000_000)
     total_num_examples = sum(subset_to_num_examples.values())
     down_sampling_ratio = args.sample_size / total_num_examples if total_num_examples > 0 else 0
-    subset_to_target_num_examples = {subset: int(num_examples * down_sampling_ratio) for subset, num_examples in subset_to_num_examples.items()}
+    subset_to_target_num_examples = {subset: int(min(num_examples,1_000_000) * down_sampling_ratio) for subset, num_examples in subset_to_num_examples.items()}
     print(subset_to_target_num_examples)
     encode_datasets=[]
     for subset in subset_to_target_num_examples.keys():
