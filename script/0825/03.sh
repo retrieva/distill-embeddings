@@ -27,7 +27,7 @@ for loss_type in "kld"; do
         --taid_t_start 0.6 \
         --scheduler "wsd" \
         --use_pos \
-        --ckpt_path "output/result/answerdotai_ModernBERT-base/Qwen_Qwen3-Embedding-4B/1000000/e10_bs128_wsd5e-05_kld_w-pos/checkpoints/epoch=03.ckpt" \
+        --ckpt_path "output/result/answerdotai_ModernBERT-base/Qwen_Qwen3-Embedding-4B/1000000/e10_bs128_wsd5e-05_kld_w-pos/checkpoints/epoch=02.ckpt" \
         --loss_type "$loss_type"
 done
         # --your_run_id curen42z\
