@@ -57,7 +57,7 @@ if __name__ == "__main__":
             tags=[args.dataset_name,f"{args.teacher_model.replace('/','_')}_encoded"],
             save_dir=args.output_dir,
             id=args.your_run_id if args.your_run_id else None,
-            resume="must" if args.ckpt_path else None,
+            resume="must" if args.your_run_id else None,
         ),
     )
     if args.validate_first:
