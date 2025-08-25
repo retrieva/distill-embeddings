@@ -10,10 +10,9 @@ from src.scheduler import get_scheduler
 import mteb
 import yaml
 from IsoScore.IsoScore import *
-import pandas as pd
 from sentence_transformers import SentenceTransformer
-from argparse import ArgumentParser
 import skdim
+from datasets import load_from_disk
 
 PROMPT_MAP = {
     "none": "",
@@ -34,8 +33,8 @@ class SentEmb(L.LightningModule):
             self.on_train_tasks = yaml.safe_load(file)[args.language]["on_train_tasks"]
         with open("tasks.yaml", 'r') as file:
             self.on_eval_tasks = yaml.safe_load(file)[args.language]["on_train_end_tasks"]
-        # argsをsave_hyperparametersで保存（wandbにも自動的に送信される）
         self.save_hyperparameters(vars(args))
+
     def configure_model(self):
         self.student_model = SentenceTransformer(
             self.args.student_model,
@@ -58,14 +57,15 @@ class SentEmb(L.LightningModule):
         }
         self.log_dict(loss_dict, batch_size=batch_size, prog_bar=True)
         return outputs.loss
-
-    def encode(self, inputs):
+    
+    @torch.no_grad()
+    def encode(self, inputs, **kwargs):
         """
         Encode the input sentences using the student model.
         """
         if isinstance(inputs, str):
             inputs = [inputs]
-        embeddings = self.student_model.encode(inputs, convert_to_tensor=True)
+        embeddings = self.student_model.encode(inputs, convert_to_tensor=True, **kwargs)
         return embeddings
     
     @torch.no_grad()
@@ -92,13 +92,13 @@ class SentEmb(L.LightningModule):
         return outputs.loss
     
     def on_train_epoch_end(self):
-        if not self.args.mteb_eval:
-            return
-            # 評価処理全体をメインプロセス (rank 0) でのみ実行するようにガードする
         if not self.trainer.is_global_zero:
             return
+        if self.args.get_id_iso:
+            self.get_id_iso_score()
+        if not self.args.mteb_eval:
+            return
         try:
-            self.print("🚀 Starting MTEB evaluation on global_rank 0...")
             # MTEB evaluation
             output_folder = self.args.output_dir / "mteb_eval"
             evaluation = mteb.MTEB(tasks=self.on_train_tasks, task_langs=[self.args.language],)
@@ -157,19 +157,17 @@ class SentEmb(L.LightningModule):
         if not self.args.get_id_iso:
             return
         score_dict = {}
-        simple_wiki = pd.read_json("data/triplet-eng/SimpleWiki.jsonl",lines=True,orient="records")
-        texts = simple_wiki.sample(10000,random_state=42)["anc"].unique().tolist()
+        wiki = load_from_disk("data/anly-wiki/en")
+        texts = wiki["text"]
         for prompt_name, prompt in PROMPT_MAP.items():
-            print(f"Calculating IsoScore for model: {self.args.student_model}, prompt: {prompt_name}")
-            model = SentenceTransformer(self.args.student_model)
-            embeddings = model.encode(texts, convert_to_tensor=True, prompt=prompt).to("cpu")
+            embeddings = self.student_model.encode(texts, convert_to_tensor=True, prompt=prompt).to("cpu")
             twonn = skdim.id.TwoNN()
             twonn.fit(embeddings)
             intrinsic_dimension_twonn = twonn.dimension_
             iso_score = IsoScore(embeddings)
             score_dict[f"{prompt_name}/iso_score"] = iso_score
             score_dict[f"{prompt_name}/id"] = intrinsic_dimension_twonn
-        self.logger.experiment.summary.update(score_dict)
+        self.log_dict(score_dict, logger=True, sync_dist=False)
     
     def on_train_end(self) -> None:
         self._on_train_end_mteb()
@@ -215,7 +213,6 @@ class KDForSentEmb(SentEmb):
     def __init__(self, args):
         super().__init__(args)
         self.teacher_model_config = None
-        # self.linear = None
 
     def configure_model(self):
         super().configure_model()
@@ -223,12 +220,7 @@ class KDForSentEmb(SentEmb):
             self.args.teacher_model,
             trust_remote_code=True,
         )
-        # # up projection layer
-        # self.linear = torch.nn.Linear(
-        #     self.student_model.get_sentence_embedding_dimension(),
-        #     self.teacher_model_config.hidden_size
-        # )
-    # def on_save_checkpoint(self, trainer: L.Trainer, lightning_module: L.LightningModule, checkpoint: Dict[str, Any]):
+
     def on_save_checkpoint(self, checkpoint):
         super().on_save_checkpoint(checkpoint)
         checkpoint["teacher_model_name"] = self.args.teacher_model
