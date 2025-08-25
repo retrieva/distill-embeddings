@@ -6,7 +6,6 @@ from src.model import KDForSentEmb
 from src.arguments import parse_args
 from pathlib import Path
 from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
-from lightning.pytorch.strategies import DeepSpeedStrategy
 import torch
 
 if __name__ == "__main__":
@@ -47,9 +46,6 @@ if __name__ == "__main__":
         precision="bf16-mixed",
         num_sanity_val_steps=0,
         callbacks=[modelcheckpoint,lr_monitor],
-        # strategy=DeepSpeedStrategy(
-            # stage=2, allgather_bucket_size=5e8, reduce_bucket_size=5e8
-        # ),
         logger=WandbLogger(
             name=os.path.basename(args.output_dir),
             project="distillation",
