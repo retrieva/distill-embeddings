@@ -16,5 +16,5 @@ uv run python src/preprocess/triplet-en_encode.py \
     --long_batch_size 2 \
     --short_batch_size 64 \
     --max_length 4096 \
-    --sample_size 1_000_000 \
+    --sample_size 3_000_000 \
     --disable_multigpu
