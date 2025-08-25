@@ -11,17 +11,13 @@ export SSL_CERT_FILE=$(uv run python -c "import certifi; print(certifi.where())"
 uv sync
 
 uv run python get_isoscore.py \
-    --model_name "Qwen/Qwen3-Embedding-4B" \
-    --prompt_name "document"
+    --model_name "Qwen/Qwen3-Embedding-4B"
 
 uv run python get_isoscore.py \
-    --model_name "Qwen/Qwen3-Embedding-4B" \
-    --prompt_name "query"
+    --model_name "output/result/answerdotai_ModernBERT-base/Qwen_Qwen3-Embedding-4B/1000000/e10_bs128_wsd5e-05_kld_w-pos/checkpoints/epoch=09.ckpt/consolidated_model.pt/pytorch_model.bin"
 
 uv run python get_isoscore.py \
-    --model_name "Qwen/Qwen3-Embedding-8B" \
-    --prompt_name "document"
+    --model_name "output/result/answerdotai_ModernBERT-base/Qwen_Qwen3-Embedding-4B/1000000/e4_bs128_wsd5e-05_kld_w-pos/checkpoints/epoch=03.ckpt/consolidated_model.pt/pytorch_model.bin"
 
 uv run python get_isoscore.py \
-    --model_name "Qwen/Qwen3-Embedding-8B" \
-    --prompt_name "query"
+    --model_name "Qwen/Qwen3-Embedding-0.6B"
