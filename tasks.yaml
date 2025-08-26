@@ -13,18 +13,19 @@ eng:
     - SummEvalSummarization.V2
   on_train_end_tasks:
       # classification
-    - ToxicConversationsClassification
-    - TweetSentimentExtractionClassification
+    - ToxicConversationsClassification # 10%
+    - TweetSentimentExtractionClassification # 3%
     # clustering
-    - StackExchangeClustering.v2
+    - StackExchangeClustering.v2 # 8%
+    - RedditClustering # 16%
     # Retrieval
-    - HotpotQAHardNegatives
-    - MSMARCOHardNegatives
+    - HotpotQAHardNegatives # 10%
+    # - MSMARCOHardNegatives
     # STS
-    - STSBenchmark
-    - SICK-R
+    - STSBenchmark # 3%
+    - SICK-R # 4%
     # Summarize
-    - SummEvalSummarization.V2
+    - SummEvalSummarization.V2 # 3%
   on_eval_tasks:
     - ArguAna
       # やれなくはない大きさのRetieval
