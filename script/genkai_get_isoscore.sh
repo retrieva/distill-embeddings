@@ -1,5 +1,4 @@
 #!/bin/sh
-#PJM --batch
 #PJM -L rscgrp=b-batch
 #PJM -L gpu=1
 #PJM -L elapse=2:00:00
