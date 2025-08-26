@@ -1,7 +1,7 @@
 #!/bin/sh
 #PJM -L rscgrp=b-batch
 #PJM -L gpu=1
-#PJM -L elapse=10:00:00
+#PJM -L elapse=20:00:00
 #PJM -j
 #PJM -o logs/0826/05.log
 
