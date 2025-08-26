@@ -12,7 +12,7 @@ if __name__ == "__main__":
     args = parse_args()
     L.seed_everything(42, workers=True)
     torch.set_float32_matmul_precision("high")
-    data_path = Path(args.data_dir) / f"triplet-{args.language}" / f"{args.teacher_model.replace('/','_')}_encoded" / args.dataset_name
+    data_dir = Path(args.data_dir) / f"triplet-{args.language}" / f"{args.teacher_model.replace('/','_')}_encoded"
     use_pos = "_w-pos" if args.use_pos else ""
     # GPU数を取得してグローバルバッチサイズを計算
     num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
@@ -24,7 +24,8 @@ if __name__ == "__main__":
     model = KDForSentEmb(args)
     model.configure_model()
     data = DataModuleForDistill(
-        data_path=data_path,
+        data_dir=data_dir,
+        data_num = args.dataset_name,
         student_tokenizer=model.student_model.tokenizer,
         batch_size=args.batch_size,
         num_workers=args.num_workers,

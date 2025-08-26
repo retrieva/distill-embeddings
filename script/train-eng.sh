@@ -12,7 +12,7 @@ for loss_type in "kld"; do
         --student_model answerdotai/ModernBERT-base \
         --teacher_model Qwen/Qwen3-Embedding-4B \
         --data_dir data \
-        --dataset_name 1000 \
+        --dataset_name 2000 \
         --output_dir output/result \
         --batch_size 4 \
         --num_epochs 1 \

@@ -84,7 +84,8 @@ class DataCollatorForContrastiveDistill(DataCollatorForDistill):
 class DataModuleForDistill(L.LightningDataModule):
     def __init__(
         self,
-        data_path: str,
+        data_dir: str,
+        data_num: str,
         student_tokenizer: PreTrainedTokenizer,
         batch_size: int,
         num_workers: int,
@@ -92,13 +93,14 @@ class DataModuleForDistill(L.LightningDataModule):
         max_length: int = 4096
     ):
         super().__init__()
-        self.data_path = data_path
+        self.data_dir = data_dir
+        self.data_num = data_num
         self.batch_size = batch_size
         self.eval_batch_size = eval_batch_size if eval_batch_size else batch_size
         self.num_workers = num_workers
         self.tokenizer = student_tokenizer
 
-        if "triplet" in str(self.data_path):
+        if "triplet" in str(self.data_dir):
             self.collate_fn = DataCollatorForContrastiveDistill(
                 tokenizer=self.tokenizer,
                 max_length=max_length,
@@ -110,10 +112,22 @@ class DataModuleForDistill(L.LightningDataModule):
             )
         self.datasets = {}
 
+    def load_data_and_emb(self,data_path):
+        datasets = load_from_disk(data_path)
+        embeddings = np.load(os.path.join(data_path ,"emb.npy"),  mmap_mode='r')
+        return datasets, embeddings
+
     def setup(self, stage: str):
-        datasets = load_from_disk(self.data_path)
+        data_path = os.path.join(self.data_dir, self.data_num)
+        if os.path.exists(data_path):
+            datasets, embeddings = self.load_data_and_emb(data_path)
+        else:
+            if int(self.data_num) < 1_000_000:
+                datasets, embeddings = self.load_data_and_emb(os.path.join(self.data_dir, '1000000'))
+                datasets = datasets.shuffle(seed=42).select(range(int(self.data_num)))
+            else:
+                raise ValueError(f"Data path {data_path} does not exist.")
         datasets = datasets.train_test_split(test_size=int(min(len(datasets)*0.1, 1000)), seed=42, shuffle=True)
-        embeddings = np.load(self.data_path / "emb.npy",  mmap_mode='r')
         logger.info(f"Total samples: {len(datasets)}, embeddings: {embeddings.shape}")
         self.datasets["train"] = DistilDataset(datasets["train"], embeddings)
         self.datasets["test"] = DistilDataset(datasets["test"], embeddings)
