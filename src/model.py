@@ -147,7 +147,6 @@ class SentEmb(L.LightningModule):
             # 平均スコアも計算して保存
             avg_score = sum(final_mteb_dict.values()) / len(final_mteb_dict)
             final_summary_dict["mteb_final/average"] = avg_score
-            
             self.logger.experiment.summary.update(final_summary_dict)
         except Exception as e:
             self.print(f"Error during MTEB evaluation: {e}")
@@ -162,12 +161,14 @@ class SentEmb(L.LightningModule):
         for prompt_name, prompt in PROMPT_MAP.items():
             embeddings = self.student_model.encode(texts, convert_to_tensor=True, prompt=prompt).to("cpu")
             twonn = skdim.id.TwoNN()
-            twonn.fit(embeddings)
+            # .to(torch.float32)で型を変換し、.cpu()でCPUに転送してから.numpy()を呼ぶ
+            embeddings_np = embeddings.to(torch.float32).cpu().numpy()
+            twonn.fit(embeddings_np)
             intrinsic_dimension_twonn = twonn.dimension_
             iso_score = IsoScore(embeddings)
             score_dict[f"{prompt_name}/iso_score"] = iso_score
             score_dict[f"{prompt_name}/id"] = intrinsic_dimension_twonn
-        self.log_dict(score_dict, logger=True, sync_dist=False)
+        self.logger.experiment.summary.update(score_dict)
     
     def on_train_end(self) -> None:
         self._on_train_end_mteb()
