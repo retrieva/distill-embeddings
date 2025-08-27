@@ -165,7 +165,7 @@ class SentEmb(L.LightningModule):
             embeddings_np = embeddings.to(torch.float32).cpu().numpy()
             twonn.fit(embeddings_np)
             intrinsic_dimension_twonn = twonn.dimension_
-            iso_score = IsoScore(embeddings)
+            iso_score = IsoScore(embeddings_np)
             score_dict[f"{prompt_name}/iso_score"] = iso_score
             score_dict[f"{prompt_name}/id"] = intrinsic_dimension_twonn
         self.logger.experiment.summary.update(score_dict)
