@@ -44,17 +44,23 @@ class TAID(DistilLoss):
             self.prev_loss = loss
             return
         # Calculate relative change rate
+        # 前回のlossとの差分
         relative_change = (self.prev_loss - loss) / (self.prev_loss + 1e-15)
         # Update momentum
         self.momentum = self.beta * self.momentum + (1 - self.beta) * relative_change
 
         # Calculate adaptive delta
+        # momentumを使った適応的な変化量を計算
         adaptive_delta = torch.sigmoid(self.momentum)
         # Update t (ensure monotonic increase)
+        # 今全体のどんぐらいか
         progress = global_step / num_train_steps
+        # 線形な場合のt
         t_target = self.t_start + (self.t_end - self.t_start) * progress
+        # alphaは学習率っぽい？ adaptive_deltaを更新量にして、実際の更新幅を決めてそう
         delta_t = self.alpha * adaptive_delta * (1 - self.t)
         t = (
+            # 更新幅を加えた時に、線形増加よりは多くなるようにする
             min(self.t_end, max(t_target, self.t + delta_t))
             if not self.disable_adaptive
             else t_target
