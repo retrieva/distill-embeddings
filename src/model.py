@@ -94,8 +94,6 @@ class SentEmb(L.LightningModule):
     def on_train_epoch_end(self):
         if not self.trainer.is_global_zero:
             return
-        if self.args.get_id_iso:
-            self.get_id_iso_score()
         if not self.args.mteb_eval:
             return
         try:
