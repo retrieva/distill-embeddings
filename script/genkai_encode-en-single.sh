@@ -11,10 +11,11 @@ nvidia-smi
 
 uv sync
 
-uv run python src/preprocess/triplet-en_encode.py \
+uv run python -m src.preprocess.gte_en_data.encode \
     --teacher_model "Qwen/Qwen3-Embedding-4B" \
     --long_batch_size 2 \
     --short_batch_size 64 \
     --max_length 4096 \
-    --sample_size 3_000_000 \
+    --sample_size 1_000_000 \
+    --w_instruction \
     --disable_multigpu

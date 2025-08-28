@@ -46,8 +46,6 @@ def main(args):
     checkpoint_dir = output_path / "checkpoints"
 
     print(f"Total target sample size: {final_sample_size}")
-    exit()
-
 
     if args.w_instruction:
         with open(args.output_dir / "instruction.json", "r") as f:
