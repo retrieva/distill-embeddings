@@ -28,8 +28,7 @@ logger = logging.getLogger(__name__)
 def main(args):
     # 出力パスとチェックポイントパスの設定
     args.output_dir = Path(args.output_dir)
-    output_path = args.output_dir / f"{args.teacher_model.replace('/', '_')}_encoded" / (f"{args.sample_size}" if args.sample_size else 'full')
-    checkpoint_dir = output_path / "checkpoints"
+
     with open(args.output_dir / "dataset_summary.json", "r") as f:
         dataset_summary = json.load(f)
     print("use these subsets",dataset_summary.keys())
@@ -38,10 +37,17 @@ def main(args):
     subset_to_target_num_examples = {}
     for subset, info in dataset_summary.items():
         subset_to_num_examples[subset] = info["len"]
-    total_num_examples = sum(subset_to_num_examples.values())
+    total_num_examples = min(args.sample_size, sum(subset_to_num_examples.values()))
     down_sampling_ratio = args.sample_size / total_num_examples if total_num_examples > 0 else 0
     subset_to_target_num_examples = {subset: int(num_examples) * min(1.0, down_sampling_ratio) for subset, num_examples in subset_to_num_examples.items()}
     print(subset_to_target_num_examples)
+    final_sample_size = int(sum(subset_to_target_num_examples.values()))
+    output_path = args.output_dir / f"{args.teacher_model.replace('/', '_')}_encoded" / str(final_sample_size)
+    checkpoint_dir = output_path / "checkpoints"
+
+    print(f"Total target sample size: {final_sample_size}")
+    exit()
+
 
     if args.w_instruction:
         with open(args.output_dir / "instruction.json", "r") as f:
@@ -161,7 +167,7 @@ def main(args):
     # 分割保存を使用
     save_split_dataset(reconstructed_dataset, all_features, output_path)
     json.dump(stats, open(output_path / "stats.json", "w"), indent=4)
-    
+
     logger.info(f"Processing completed. Output saved to {output_path}")
 
 if __name__ == "__main__":
