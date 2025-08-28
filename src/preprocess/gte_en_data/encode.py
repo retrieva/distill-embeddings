@@ -39,7 +39,7 @@ def main(args):
         subset_to_num_examples[subset] = info["len"]
     total_num_examples = min(args.sample_size, sum(subset_to_num_examples.values()))
     down_sampling_ratio = args.sample_size / total_num_examples if total_num_examples > 0 else 0
-    subset_to_target_num_examples = {subset: int(num_examples) * min(1.0, down_sampling_ratio) for subset, num_examples in subset_to_num_examples.items()}
+    subset_to_target_num_examples = {subset: int(num_examples * min(1.0, down_sampling_ratio)) for subset, num_examples in subset_to_num_examples.items()}
     print(subset_to_target_num_examples)
     final_sample_size = int(sum(subset_to_target_num_examples.values()))
     output_path = args.output_dir / f"{args.teacher_model.replace('/', '_')}_encoded" / str(final_sample_size)
