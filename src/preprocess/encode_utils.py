@@ -83,13 +83,15 @@ def stat_text_lengths(texts):
         "75th_percentile": float(np.percentile(lengths, 75))
     }
 
-def flatten_dataset_batch(batch, indices, subset):
+def flatten_dataset_batch(batch, indices, subset, instruction:str = ""):
     """データセットをフラット化してanc/posを個別のレコードに"""
     results = {"text": [], "subset": [], "id": [], "column": [], "len": []}
     
     for i, idx in enumerate(indices):
         for column in ["anc", "pos"]:
             text = batch[column][i] if column in batch else ""
+            if column == "anc" and instruction != "":
+                text = f"Instruct:{instruction}\nQuery:{text}"
             results["text"].append(text)
             results["subset"].append(subset)
             results["id"].append(idx)
