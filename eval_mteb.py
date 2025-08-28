@@ -25,9 +25,8 @@ def main(args):
         # 2. SentenceTransformerモデルを直接ロード
         model = SentenceTransformer(model_name)
         output_folder = Path("output") / model_name.replace("/", "_")
-    # evaluation = mteb.MTEB(tasks=tasks, task_langs=["eng"],)
-    evaluation = mteb.MTEB(tasks=["MSMARCOHardNegatives"], task_langs=["eng"],)
-    # evaluation.tasks[0].calculate_metadata_metrics()
+    evaluation = mteb.MTEB(tasks=tasks, task_langs=["eng"],)
+    evaluation.tasks[0].calculate_metadata_metrics()
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
