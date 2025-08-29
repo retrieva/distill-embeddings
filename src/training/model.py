@@ -1,18 +1,19 @@
-from typing import Dict, Any
-import torch
-from torch import Tensor
+from typing import Any
+
 import lightning as L
-from transformers import AutoConfig
-from src.training.loss import get_loss_fn, LossOutput
-from sentence_transformers import SentenceTransformer
-from src.training.data import Batch
-from src.training.scheduler import get_scheduler
 import mteb
-import yaml
-from IsoScore.IsoScore import *
-from sentence_transformers import SentenceTransformer
 import skdim
+import torch
+import yaml
 from datasets import load_from_disk
+from IsoScore import IsoScore
+from sentence_transformers import SentenceTransformer
+from torch import Tensor
+from transformers import AutoConfig
+
+from src.training.data import Batch
+from src.training.loss import LossOutput, get_loss_fn
+from src.training.scheduler import get_scheduler
 
 PROMPT_MAP = {
     "none": "",
@@ -30,9 +31,9 @@ class SentEmb(L.LightningModule):
         self.args = args
         self.validation_step_outputs = {}
         self.mteb_dict = {}
-        with open("tasks.yaml", "r") as file:
+        with open("tasks.yaml") as file:
             self.on_train_tasks = yaml.safe_load(file)[args.language]["on_train_tasks"]
-        with open("tasks.yaml", "r") as file:
+        with open("tasks.yaml") as file:
             self.on_eval_tasks = yaml.safe_load(file)[args.language]["on_train_end_tasks"]
         self.save_hyperparameters(vars(args))
 
@@ -185,7 +186,7 @@ class SentEmb(L.LightningModule):
         checkpoint["student_model_name"] = self.args.student_model
         checkpoint["code_name"] = self.args.output_dir.name
 
-    def on_load_checkpoint(self, checkpoint: Dict[str, Any]):
+    def on_load_checkpoint(self, checkpoint: dict[str, Any]):
         sd = self.state_dict()
         for key in list(sd.keys()):
             if "teacher_model." in key:

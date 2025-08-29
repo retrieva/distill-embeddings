@@ -1,12 +1,14 @@
 import os
+from pathlib import Path
+
 import lightning as L
+import torch
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
+
+from src.training.arguments import parse_args
 from src.training.data import DataModuleForDistill
 from src.training.model import KDForSentEmb
-from src.training.arguments import parse_args
-from pathlib import Path
-from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
-import torch
 
 if __name__ == "__main__":
     args = parse_args()

@@ -16,7 +16,7 @@ for data_name in raw_data_dir.iterdir():
         data_df.append(data)
     data_df = pd.concat(data_df, ignore_index=True)
     data_df["source"] = data_name.name
-    data_df["pos"] = data_df["pos"].apply(lambda x: x[0] if type(x) == list else x)
+    data_df["pos"] = data_df["pos"].apply(lambda x: x[0] if isinstance(x, list) else x)
     data_df = (
         data_df[["source", "query", "pos"]].rename(columns={"query": "anc"}).sample(frac=1).reset_index(drop=True)
     )

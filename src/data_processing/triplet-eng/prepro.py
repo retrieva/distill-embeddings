@@ -78,7 +78,7 @@ def main(args):
                     if batch:
                         output_data.extend(process_batch(batch, data_keys))
 
-                elif isinstance(first_line, (list, tuple)):
+                elif isinstance(first_line, list | tuple):
                     for line in f:
                         item = json.loads(line.strip())
                         processed_item = {

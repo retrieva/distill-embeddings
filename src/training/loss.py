@@ -1,13 +1,13 @@
-from typing import Dict, Optional
 from dataclasses import dataclass
 
 import torch
-from torch import nn, Tensor
 import torch.nn.functional as F
-from lightning import LightningModule
-from src.training.distil_losses import *
-from src.training.data import Batch
 from einops import einsum
+from lightning import LightningModule
+from torch import Tensor, nn
+
+from src.training.data import Batch
+from src.training.distil_losses import CKD, DP_KLD, KLD, MSE, TAID, DistillLoss, DistilLoss, JasperStella
 
 taid_forward_fn_map = {"ckd": CKD, "kld": KLD, "mse": MSE, "dp_kld": DP_KLD, "js": JasperStella}
 
@@ -15,7 +15,7 @@ taid_forward_fn_map = {"ckd": CKD, "kld": KLD, "mse": MSE, "dp_kld": DP_KLD, "js
 @dataclass
 class LossOutput:
     loss: Tensor
-    loss_dict: Dict[str, Tensor]
+    loss_dict: dict[str, Tensor]
 
 
 class InfoCSE(nn.Module):
@@ -73,7 +73,7 @@ class KDLoss(nn.Module):
     def __init__(
         self,
         use_pos,
-        distil_loss_fn: Optional[DistilLoss] = None,
+        distil_loss_fn: DistilLoss | None = None,
     ):
         super().__init__()
         self.use_pos = use_pos
