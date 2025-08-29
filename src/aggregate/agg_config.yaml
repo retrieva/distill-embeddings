@@ -1,0 +1,10 @@
+project: "retrieva-research/distillation"
+group_code_name: "ep3_bs64_4B"
+filters:
+  "$and":
+    - "config.num_epochs":
+        "$gte": 3
+    - "config.batch_size":
+        "$gte": 64
+    - "tags": "Qwen_Qwen3-Embedding-4B_encoded"
+    - "state": "finished"
