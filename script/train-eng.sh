@@ -8,7 +8,7 @@
 for loss_type in "kld"; do
 # for loss_type in "mse" "kld" "taid-mse" "taid-kld"; do
 # for loss_type in "mse" "kld" "ckd" "taid-ckd" "taid-mse" "taid-kld"; do
-    uv run python train.py \
+    uv run python -m src.training.train \
         --student_model nomic-ai/modernbert-embed-base-unsupervised \
         --teacher_model Qwen/Qwen3-Embedding-4B \
         --data_dir data \
