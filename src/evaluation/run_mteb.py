@@ -49,7 +49,7 @@ def main(args):
     summary_df = pd.DataFrame(summary_gr_df.value["data"], columns=summary_gr_df.value["headers"])
     per_task_df = pd.DataFrame(per_task_gr_df.value["data"], columns=per_task_gr_df.value["headers"])
     scores = pd.concat([summary_df, per_task_df], axis=1)
-    scores.to_csv(output_folder / f"{args.language}_mteb_scores.csv")
+    scores.to_csv(output_folder / f"{args.language}_{args.benchmark_name}_scores.csv")
 
 
 if __name__ == "__main__":
