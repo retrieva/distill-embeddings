@@ -23,7 +23,7 @@ def parse_args():
         "--output_dir", type=str, default="logs", help="output directory"
     )
     parser.add_argument("--data_dir", type=str, required=True, help="path to data dir")
-    parser.add_argument("--dataset_name", type=str, required=True, help="name of the dataset")
+    parser.add_argument("--data_size", type=str, required=True, help="data size")
     parser.add_argument("--num_epochs", type=int, default=5, help="number of epochs")
     parser.add_argument("--val_check_interval", type=float, default=1.0)
     parser.add_argument("--log_every_n_steps", type=int, default=50, help="log every n steps")
