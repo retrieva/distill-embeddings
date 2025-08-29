@@ -10,7 +10,7 @@ module load cuda cudnn nccl gcc
 nvidia-smi
 uv sync
 for model_name in "nomic-ai/modernbert-embed-base-unsupervised"; do
-    uv run python eval_mteb.py \
+    uv run python src/evaluation/run_mteb.py \
         --model_name $model_name \
         --batch_size 128 \
         --benchmark_name "MTEB(eng, v2)"
