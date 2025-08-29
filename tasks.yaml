@@ -39,15 +39,15 @@ eng:
       # STS　Medical　１００とか
     - Banking77Classification
       # Classification 1まん、でかい
-    - BiorxivClusteringP2P.v2
+    # - BiorxivClusteringP2P.v2
       # Clustering 5まん、無理
-    - CQADupstackGamingRetrieval
+    # - CQADupstackGamingRetrieval
       # Retrieval doc 5まん
-    - CQADupstackUnixRetrieval
+    # - CQADupstackUnixRetrieval
       # Retrieval doc 5まん
-    - ClimateFEVERHardNegatives
+    # - ClimateFEVERHardNegatives
       # Retrieval doc 5まん
-    - FEVERHardNegatives
+    # - FEVERHardNegatives
       # Retrieval doc  １６まん、無理
     - FiQA2018
       # Retrieval doc 6まん
