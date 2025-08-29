@@ -12,9 +12,15 @@ from src.utils import load_model
 def main(args):
     model_name = args.model_name
     model, output_folder = load_model(model_name=model_name, return_output_folder=True)
-    with open("tasks.yaml") as file:
-        tasks = yaml.safe_load(file)
-        tasks = tasks[args.language]["on_eval_tasks"]
+    if args.benchmark_name in ["on_eval_tasks", "on_train_end_tasks", "on_train_tasks"]:
+        with open("tasks.yaml") as file:
+            tasks = yaml.safe_load(file)
+            tasks = tasks[args.language][args.benchmark_name]
+    elif args.benchmark_name in ["MTEB(eng, v2)"]:
+        benchmark = mteb.get_benchmark(args.benchmark_name)
+        tasks = benchmark.tasks
+    else:
+        raise ValueError(f"Unknown benchmark name: {args.benchmark_name}")
     evaluation = mteb.MTEB(tasks=tasks, task_langs=[args.language])
     evaluation.tasks[0].calculate_metadata_metrics()
     import warnings
@@ -63,5 +69,6 @@ if __name__ == "__main__":
     )
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size for evaluation.")
     parser.add_argument("--num_workers", type=int, default=4, help="Number of workers for data loading.")
+    parser.add_argument("--benchmark_name", type=str, default="on_eval_tasks", help="Name of the benchmark.")
     args = parser.parse_args()
     main(args)
