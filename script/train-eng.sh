@@ -11,18 +11,13 @@ for loss_type in "kld"; do
     uv run python -m src.training.train \
         --student_model nomic-ai/modernbert-embed-base-unsupervised \
         --teacher_model Qwen/Qwen3-Embedding-4B \
-        --data_dir data \
-        --data_name gte \
         --data_size 1000 \
-        --output_dir output/result \
         --batch_size 4 \
         --num_epochs 1 \
         --max_length 4096 \
-        --val_check_interval 1 \
-        --log_every_n_steps 1 \
         --language eng \
         --get_id_iso \
         --use_pos \
+        --mteb_eval \
         --loss_type "$loss_type"
 done
-        # --mteb_eval \
