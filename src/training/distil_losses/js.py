@@ -7,7 +7,8 @@ import torch
 import torch.nn.functional as F
 from .base import DistilLoss
 from lightning import LightningModule
-from typing import Dict, Union,Optional
+from typing import Dict, Union, Optional
+
 
 class JasperStella(DistilLoss):
     def __init__(self, args: Optional[Dict] = None):
@@ -16,7 +17,7 @@ class JasperStella(DistilLoss):
         self.lambda_sim = 200
         self.lambda_tri = 20
         self.triplet_margin = 0.015
-        self.use_pos = args.use_pos if hasattr(args, 'use_pos') else False
+        self.use_pos = args.use_pos if hasattr(args, "use_pos") else False
 
     def compute_loss(
         self,
@@ -30,11 +31,13 @@ class JasperStella(DistilLoss):
         similarity_loss = self.pair_inbatch_similarity_loss(student_features, teacher_features)
         triplet_loss = self.pair_inbatch_triplet_loss(student_features, teacher_features)
 
-        loss_dict['loss'] = cosine_loss*self.lambda_cos + similarity_loss*self.lambda_sim + triplet_loss*self.lambda_tri
-        loss_dict['cosine_loss'] = cosine_loss*self.lambda_cos
-        loss_dict['similarity_loss'] = similarity_loss*self.lambda_sim
-        loss_dict['triplet_loss'] = triplet_loss*self.lambda_tri
-        return loss_dict['loss'], loss_dict
+        loss_dict["loss"] = (
+            cosine_loss * self.lambda_cos + similarity_loss * self.lambda_sim + triplet_loss * self.lambda_tri
+        )
+        loss_dict["cosine_loss"] = cosine_loss * self.lambda_cos
+        loss_dict["similarity_loss"] = similarity_loss * self.lambda_sim
+        loss_dict["triplet_loss"] = triplet_loss * self.lambda_tri
+        return loss_dict["loss"], loss_dict
 
     def make_features(
         self,
@@ -53,7 +56,7 @@ class JasperStella(DistilLoss):
         else:
             teacher_features = F.normalize(teacher_features, dim=-1)
             return projected_features, teacher_features
-        
+
     def forward(
         self,
         lightning_module: LightningModule,
@@ -63,7 +66,7 @@ class JasperStella(DistilLoss):
         pos_teacher_features: torch.Tensor = None,
         validation: bool = False,
         **kwargs,
-        )-> Union[Dict, torch.Tensor]:
+    ) -> Union[Dict, torch.Tensor]:
         loss_dict = {}
         student_features, teacher_features = self.make_features(
             projected_features=projected_features,
@@ -76,11 +79,8 @@ class JasperStella(DistilLoss):
             teacher_features=teacher_features,
         )
         return loss_dict
-    
-    def get_score_diff(
-        self,
-        embedding
-    ):
+
+    def get_score_diff(self, embedding):
         scores = torch.matmul(embedding, embedding.T)
         scores = scores[torch.triu(torch.ones_like(scores), diagonal=1).bool()]
         score_diff = scores.reshape((1, -1)) - scores.reshape((-1, 1))
@@ -89,8 +89,8 @@ class JasperStella(DistilLoss):
 
     def cosine_embedding_loss(
         self,
-        student_features, # [batch_size,dim]
-        teacher_features, # [batch_size,dim]
+        student_features,  # [batch_size,dim]
+        teacher_features,  # [batch_size,dim]
     ):
         # get cosine loss
         labels = torch.arange(student_features.size(0), device=student_features.device)
@@ -99,11 +99,11 @@ class JasperStella(DistilLoss):
 
     def pair_inbatch_similarity_loss(
         self,
-        student_features, # [batch_size,dim]
-        teacher_features, # [batch_size,dim]
+        student_features,  # [batch_size,dim]
+        teacher_features,  # [batch_size,dim]
     ):
         # get mse loss
-        #[batch_size,batch_size]<- [batch_size,dim],[dim,batch_size]
+        # [batch_size,batch_size]<- [batch_size,dim],[dim,batch_size]
         student_similarity = student_features @ student_features.transpose(-1, -2)
         teacher_similarity = teacher_features @ teacher_features.transpose(-1, -2)
         loss = F.mse_loss(student_similarity, teacher_similarity)
@@ -111,9 +111,9 @@ class JasperStella(DistilLoss):
 
     def pair_inbatch_triplet_loss(
         self,
-        student_features, # [batch_size,dim]
-        teacher_features, # [batch_size,dim]
-    ):  
+        student_features,  # [batch_size,dim]
+        teacher_features,  # [batch_size,dim]
+    ):
         triplet_label = torch.where(self.get_score_diff(teacher_features) < 0, 1, -1)
         # get triplets loss
         loss = F.relu(self.get_score_diff(student_features) * triplet_label + self.triplet_margin).mean()

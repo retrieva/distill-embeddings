@@ -9,11 +9,10 @@ from torch.nn import functional as F
 from .base import DistilLoss
 from lightning import LightningModule
 
+
 class MSE(DistilLoss):
     def __init__(self, args=None):
-
         super().__init__()
-
 
     def make_features(
         self,
@@ -22,6 +21,7 @@ class MSE(DistilLoss):
         **kwargs,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         return projected_features, teacher_features
+
     def compute_loss(
         self,
         projected_features: torch.Tensor,
@@ -43,11 +43,10 @@ class MSE(DistilLoss):
         validation: bool = False,
         **kwargs,
     ) -> torch.Tensor:
-        
         projected_features, teacher_features = self.make_features(
             projected_features=projected_features,
             teacher_features=teacher_features,
         )
         # MSE損失を計算
-        loss,loss_dict = self.compute_loss(projected_features, teacher_features, validation=validation)
+        loss, loss_dict = self.compute_loss(projected_features, teacher_features, validation=validation)
         return loss_dict

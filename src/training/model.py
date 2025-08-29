@@ -18,8 +18,9 @@ PROMPT_MAP = {
     "none": "",
     "retrieval": "Given a question, retrieve passages that answer the question",
     "sts": "Retrieve semantically similar text",
-    "classification": "Given a text, classify its topic"
+    "classification": "Given a text, classify its topic",
 }
+
 
 class SentEmb(L.LightningModule):
     def __init__(self, args):
@@ -29,9 +30,9 @@ class SentEmb(L.LightningModule):
         self.args = args
         self.validation_step_outputs = {}
         self.mteb_dict = {}
-        with open("tasks.yaml", 'r') as file:
+        with open("tasks.yaml", "r") as file:
             self.on_train_tasks = yaml.safe_load(file)[args.language]["on_train_tasks"]
-        with open("tasks.yaml", 'r') as file:
+        with open("tasks.yaml", "r") as file:
             self.on_eval_tasks = yaml.safe_load(file)[args.language]["on_train_end_tasks"]
         self.save_hyperparameters(vars(args))
 
@@ -40,7 +41,7 @@ class SentEmb(L.LightningModule):
             self.args.student_model,
         ).bfloat16()
 
-    def forward(self, batch: Batch, validation:bool = False, **kwargs) -> LossOutput:
+    def forward(self, batch: Batch, validation: bool = False, **kwargs) -> LossOutput:
         outputs: LossOutput = self.loss_fn(lightning_module=self, batch=batch, validation=validation, **kwargs)
         return outputs
 
@@ -52,12 +53,10 @@ class SentEmb(L.LightningModule):
         # compute loss
         outputs = self(batch)
         loss_dict = outputs.loss_dict
-        loss_dict = {
-            f"train/{k}": v for k, v in loss_dict.items() if v is not None
-        }
+        loss_dict = {f"train/{k}": v for k, v in loss_dict.items() if v is not None}
         self.log_dict(loss_dict, batch_size=batch_size, prog_bar=True)
         return outputs.loss
-    
+
     @torch.no_grad()
     def encode(self, inputs, **kwargs):
         """
@@ -67,16 +66,14 @@ class SentEmb(L.LightningModule):
             inputs = [inputs]
         embeddings = self.student_model.encode(inputs, convert_to_tensor=True, **kwargs)
         return embeddings
-    
+
     @torch.no_grad()
     def validation_step(self, batch, batch_idx, dataloader_idx=0) -> Tensor:
         res = {}
         batch_size = self.get_batch_size(batch)
-        outputs = self(batch,validation=True)
+        outputs = self(batch, validation=True)
         loss_dict = outputs.loss_dict
-        loss_dict = {
-            f"val_{dataloader_idx}/{k}": v for k, v in loss_dict.items() if v is not None
-        }
+        loss_dict = {f"val_{dataloader_idx}/{k}": v for k, v in loss_dict.items() if v is not None}
 
         self.log_dict(
             loss_dict,
@@ -90,7 +87,7 @@ class SentEmb(L.LightningModule):
             self.validation_step_outputs[dataloader_idx] = []
         self.validation_step_outputs[dataloader_idx].append(res)
         return outputs.loss
-    
+
     def on_train_epoch_end(self):
         if not self.trainer.is_global_zero:
             return
@@ -99,49 +96,61 @@ class SentEmb(L.LightningModule):
         try:
             # MTEB evaluation
             output_folder = self.args.output_dir / "mteb_eval"
-            evaluation = mteb.MTEB(tasks=self.on_train_tasks, task_langs=[self.args.language],)
+            evaluation = mteb.MTEB(
+                tasks=self.on_train_tasks,
+                task_langs=[self.args.language],
+            )
             import warnings
+
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                scores = evaluation.run(self.student_model, output_folder=output_folder,
-                                        num_workers=self.args.num_workers,
-                                        overwrite_results=True,
-                                        verbosity=1,
-                                        encode_kwargs={"batch_size": self.args.batch_size},
-                                        )
+                scores = evaluation.run(
+                    self.student_model,
+                    output_folder=output_folder,
+                    num_workers=self.args.num_workers,
+                    overwrite_results=True,
+                    verbosity=1,
+                    encode_kwargs={"batch_size": self.args.batch_size},
+                )
             mteb_dict = {score.task_name: score.get_score() for score in scores}
             if self._save_mteb_flag(mteb_dict):
                 self.mteb_dict = mteb_dict
-            
+
             self.log_dict(mteb_dict, logger=True, sync_dist=False)
             self.print(f"MTEB evaluation results: {mteb_dict}")
         except Exception as e:
             self.print(f"Error during MTEB evaluation: {e}")
             self.print("Skipping MTEB evaluation due to an error.")
 
-    def _save_mteb_flag(self,mteb_dict:dict) -> bool:
+    def _save_mteb_flag(self, mteb_dict: dict) -> bool:
         return True
-    
+
     def _on_train_end_mteb(self):
         if not self.args.mteb_eval:
             return
         try:
             # MTEB evaluation
             output_folder = self.args.output_dir / "mteb_eval"
-            evaluation = mteb.MTEB(tasks=self.on_eval_tasks, task_langs=[self.args.language],)
+            evaluation = mteb.MTEB(
+                tasks=self.on_eval_tasks,
+                task_langs=[self.args.language],
+            )
             import warnings
+
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                scores = evaluation.run(self.student_model, output_folder=output_folder,
-                                        num_workers=self.args.num_workers,
-                                        overwrite_results=True,
-                                        verbosity=1,
-                                        encode_kwargs={"batch_size": self.args.batch_size},
-                                        )
+                scores = evaluation.run(
+                    self.student_model,
+                    output_folder=output_folder,
+                    num_workers=self.args.num_workers,
+                    overwrite_results=True,
+                    verbosity=1,
+                    encode_kwargs={"batch_size": self.args.batch_size},
+                )
             # MTEBの最終結果をSummaryに保存
             final_mteb_dict = {score.task_name: score.get_score() for score in scores}
             final_summary_dict = {f"mteb_final/{k}": v for k, v in final_mteb_dict.items()}
-            
+
             # 平均スコアも計算して保存
             avg_score = sum(final_mteb_dict.values()) / len(final_mteb_dict)
             final_summary_dict["mteb_final/average"] = avg_score
@@ -167,7 +176,7 @@ class SentEmb(L.LightningModule):
             score_dict[f"{prompt_name}/iso_score"] = iso_score
             score_dict[f"{prompt_name}/id"] = intrinsic_dimension_twonn
         self.logger.experiment.summary.update(score_dict)
-    
+
     def on_train_end(self) -> None:
         self._on_train_end_mteb()
         self.get_id_iso_score()
@@ -188,7 +197,7 @@ class SentEmb(L.LightningModule):
     def configure_optimizers(self):
         # distilcseからbetaが少し変わっているので注意　https://docs.pytorch.org/docs/stable/generated/torch.optim.AdamW.html
         # original: eps=1e-8, betas=(0.9, 0.98）
-        optim = torch.optim.AdamW(self.student_model.parameters(),lr=self.args.lr)
+        optim = torch.optim.AdamW(self.student_model.parameters(), lr=self.args.lr)
         num_training_steps = self.trainer.estimated_stepping_batches
         scheduler = get_scheduler(
             name=self.args.scheduler,
@@ -196,9 +205,7 @@ class SentEmb(L.LightningModule):
             num_training_steps=num_training_steps,
             num_warmup_steps=self.args.warmup_ratio * num_training_steps,
         )
-        self.print(
-            f"Setting up scheduler (estimated_stepping_batches: {num_training_steps})..."
-        )
+        self.print(f"Setting up scheduler (estimated_stepping_batches: {num_training_steps})...")
         scheduler = [
             {
                 "scheduler": scheduler,
@@ -207,7 +214,8 @@ class SentEmb(L.LightningModule):
             }
         ]
         return [optim], scheduler
-    
+
+
 class KDForSentEmb(SentEmb):
     def __init__(self, args):
         super().__init__(args)

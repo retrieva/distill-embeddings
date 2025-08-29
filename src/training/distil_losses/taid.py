@@ -27,19 +27,12 @@ class TAID(DistilLoss):
         self.alpha = alpha
         self.beta = beta
         self.disable_adaptive = disable_adaptive
-        self.register_buffer(
-            "t", torch.tensor(t_start, device="cuda", dtype=torch.float32)
-        )
-        self.register_buffer(
-            "prev_loss", torch.tensor(float("inf"), device="cuda", dtype=torch.float32)
-        )
-        self.register_buffer(
-            "momentum", torch.zeros([], device="cuda", dtype=torch.float32)
-        )
+        self.register_buffer("t", torch.tensor(t_start, device="cuda", dtype=torch.float32))
+        self.register_buffer("prev_loss", torch.tensor(float("inf"), device="cuda", dtype=torch.float32))
+        self.register_buffer("momentum", torch.zeros([], device="cuda", dtype=torch.float32))
         self.forward_fn = forward_fn
-    def update_t(
-        self, loss: torch.Tensor, global_step: int, num_train_steps: int
-    ) -> torch.Tensor:
+
+    def update_t(self, loss: torch.Tensor, global_step: int, num_train_steps: int) -> torch.Tensor:
         if torch.isinf(self.prev_loss):
             self.prev_loss = loss
             return
@@ -61,9 +54,7 @@ class TAID(DistilLoss):
         delta_t = self.alpha * adaptive_delta * (1 - self.t)
         t = (
             # 更新幅を加えた時に、線形増加よりは多くなるようにする
-            min(self.t_end, max(t_target, self.t + delta_t))
-            if not self.disable_adaptive
-            else t_target
+            min(self.t_end, max(t_target, self.t + delta_t)) if not self.disable_adaptive else t_target
         )
         if not isinstance(t, torch.Tensor):
             t = torch.tensor(t, device=self.t.device, dtype=self.t.dtype)
@@ -86,7 +77,7 @@ class TAID(DistilLoss):
             pos_teacher_features=pos_teacher_features,
         )
         p_t = (1 - self.t) * student_features.detach() + self.t * teacher_features
-        distil_loss, loss_dict = self.forward_fn.compute_loss(student_features,p_t,validation=validation)
+        distil_loss, loss_dict = self.forward_fn.compute_loss(student_features, p_t, validation=validation)
         return distil_loss, loss_dict
 
     def forward(

@@ -6,10 +6,11 @@ import torch
 import torch.nn.functional as F
 from .kld import KLD
 
+
 class RKL(KLD):
     """
     Knowledge Distillation using Reverse KL Divergence Loss for sentence embeddings.
-    
+
     バッチ内の文埋め込み同士の類似度分布を教師モデルから生徒モデルに蒸留する。
     先生の分布を生徒の分布に近づける、"逆"KL
     """
@@ -29,7 +30,7 @@ class RKL(KLD):
         teacher_log_probs = F.log_softmax(sim_t, dim=1, dtype=torch.float32)
 
         # KL(student || teacher) を計算
-        kl_loss = F.kl_div(teacher_log_probs, student_probs, reduction='batchmean')
-        kl_loss = kl_loss * (self.temp ** 2)  # 温度パラメータで調整
+        kl_loss = F.kl_div(teacher_log_probs, student_probs, reduction="batchmean")
+        kl_loss = kl_loss * (self.temp**2)  # 温度パラメータで調整
 
         return kl_loss, {"loss": kl_loss, "temp": self.temp}

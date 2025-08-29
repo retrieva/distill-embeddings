@@ -13,15 +13,19 @@ from typing import Dict, Optional
 class KLD(DistilLoss):
     """
     Knowledge Distillation using KL Divergence Loss for sentence embeddings.
-    
+
     バッチ内の文埋め込み同士の類似度分布を教師モデルから生徒モデルに蒸留する。
     教師と生徒それぞれのバッチ内類似度行列を計算し、その確率分布間のKLダイバージェンスを損失とする。
     これにより生徒モデルが教師モデルの埋め込み空間構造を学習する。
     """
-    def __init__(self, args: Optional[Dict] = None, ):
+
+    def __init__(
+        self,
+        args: Optional[Dict] = None,
+    ):
         super().__init__()
-        self.temp = args.kld_temp if hasattr(args, 'kld_temp') else 2.0
-        self.use_pos = args.use_pos if hasattr(args, 'use_pos') else False
+        self.temp = args.kld_temp if hasattr(args, "kld_temp") else 2.0
+        self.use_pos = args.use_pos if hasattr(args, "use_pos") else False
 
     def compute_loss(
         self,
@@ -37,8 +41,8 @@ class KLD(DistilLoss):
         teacher_probs = F.softmax(sim_t, dim=1, dtype=torch.float32)
         student_log_probs = F.log_softmax(sim_s, dim=1, dtype=torch.float32)
         # KL(teacher || student) を計算
-        kl_loss = F.kl_div(student_log_probs, teacher_probs, reduction='batchmean')
-        kl_loss = kl_loss * (max(1.0, self.temp ** 2))  # 温度パラメータで調整
+        kl_loss = F.kl_div(student_log_probs, teacher_probs, reduction="batchmean")
+        kl_loss = kl_loss * (max(1.0, self.temp**2))  # 温度パラメータで調整
 
         return kl_loss, {"loss": kl_loss, "temp": self.temp}
 
@@ -49,19 +53,18 @@ class KLD(DistilLoss):
         pos_projected_features: torch.Tensor = None,
         pos_teacher_features: torch.Tensor = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        
         student_features = F.normalize(projected_features, dim=-1)
         teacher_features = F.normalize(teacher_features, dim=-1)
         if pos_projected_features is not None and pos_teacher_features is not None and self.use_pos:
             pos_student_features = F.normalize(pos_projected_features, dim=-1)
             pos_teacher_features = F.normalize(pos_teacher_features, dim=-1)
             # 類似度行列を計算（バッチ内の各文同士の類似度）
-            sim_s = einsum(student_features, pos_student_features, 'b d, k d -> b k') / self.temp
-            sim_t = einsum(teacher_features, pos_teacher_features, 'b d, k d -> b k') / self.temp
-        else: 
+            sim_s = einsum(student_features, pos_student_features, "b d, k d -> b k") / self.temp
+            sim_t = einsum(teacher_features, pos_teacher_features, "b d, k d -> b k") / self.temp
+        else:
             # 類似度行列を計算（バッチ内の各文同士の類似度）
-            sim_s = einsum(student_features, student_features, 'b d, k d -> b k') / self.temp
-            sim_t = einsum(teacher_features, teacher_features, 'b d, k d -> b k') / self.temp
+            sim_s = einsum(student_features, student_features, "b d, k d -> b k") / self.temp
+            sim_t = einsum(teacher_features, teacher_features, "b d, k d -> b k") / self.temp
 
         return sim_s, sim_t
 
@@ -85,7 +88,7 @@ class KLD(DistilLoss):
             pos_projected_features=pos_projected_features,
             pos_teacher_features=pos_teacher_features,
         )
-        kl_loss,loss_dict = self.compute_loss(
+        kl_loss, loss_dict = self.compute_loss(
             sim_s=sim_s,
             sim_t=sim_t,
             validation=validation,

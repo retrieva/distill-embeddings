@@ -19,23 +19,15 @@ def parse_args():
     )
 
     # training args
-    parser.add_argument(
-        "--output_dir", type=str, default="logs", help="output directory"
-    )
+    parser.add_argument("--output_dir", type=str, default="logs", help="output directory")
     parser.add_argument("--data_dir", type=str, required=True, help="path to data dir")
     parser.add_argument("--data_size", type=str, required=True, help="data size")
     parser.add_argument("--num_epochs", type=int, default=5, help="number of epochs")
     parser.add_argument("--val_check_interval", type=float, default=1.0)
     parser.add_argument("--log_every_n_steps", type=int, default=50, help="log every n steps")
-    parser.add_argument(
-        "--validate_first", action="store_true", help="run validation before training"
-    )
-    parser.add_argument(
-        "--batch_size", type=int, default=8, help="batch size per device"
-    )
-    parser.add_argument(
-        "--num_workers", type=int, default=4, help="number of workers for data loader"
-    )
+    parser.add_argument("--validate_first", action="store_true", help="run validation before training")
+    parser.add_argument("--batch_size", type=int, default=8, help="batch size per device")
+    parser.add_argument("--num_workers", type=int, default=4, help="number of workers for data loader")
     parser.add_argument("--lr", type=float, default=5e-5, help="learning rate")
     parser.add_argument("--ckd_temp", type=float, default=0.05, help="CKD temperature")
     parser.add_argument("--kld_temp", type=float, default=1.0, help="KLD temperature")
@@ -56,9 +48,7 @@ def parse_args():
         help="threshold for head. It indicates mu in the paper (https://arxiv.org/abs/2404.02657)",
     )
     parser.add_argument("--skew_beta", type=float, default=0.1, help="skew weight")
-    parser.add_argument(
-        "--taid_t_start", type=float, default=0.4, help="t_start in TAID"
-    )
+    parser.add_argument("--taid_t_start", type=float, default=0.4, help="t_start in TAID")
     parser.add_argument("--taid_t_end", type=float, default=1.0, help="t_end in TAID")
     parser.add_argument(
         "--taid_alpha",
@@ -89,7 +79,10 @@ def parse_args():
         default=0.05,
         help="warmup ratio for learning rate scheduler",
     )
-    parser.add_argument("--scheduler",type=str, default="cosine",
+    parser.add_argument(
+        "--scheduler",
+        type=str,
+        default="cosine",
         choices=["constant", "wsd", "cosine"],
         help="scheduler type",
     )
@@ -99,23 +92,28 @@ def parse_args():
         default=4096,
         help="maximum sequence length",
     )
-    parser.add_argument("--mteb_eval",action="store_true",
+    parser.add_argument(
+        "--mteb_eval",
+        action="store_true",
         help="run MTEB evaluation at the end of training",
     )
-    parser.add_argument("--get_id_iso",action="store_true",
+    parser.add_argument(
+        "--get_id_iso",
+        action="store_true",
         help="get intrinsic dimension and iso score",
     )
-    parser.add_argument("--language", type=str, default="eng",
+    parser.add_argument(
+        "--language",
+        type=str,
+        default="eng",
         help="language for experiment",
     )
-    parser.add_argument("--use_pos",action="store_true",
+    parser.add_argument(
+        "--use_pos",
+        action="store_true",
         help="use positive samples(contrastive)",
     )
-    parser.add_argument("--your_run_id", type=str, default=None,
-                        help="your run id")
-    parser.add_argument("--ckpt_path", type=str, default=None,
-                        help="path to the checkpoint file")
-    parser.add_argument("--data_name", type=str, default="gte",
-                        choices=["gte", "triplet"],
-                        help="name of the data")
+    parser.add_argument("--your_run_id", type=str, default=None, help="your run id")
+    parser.add_argument("--ckpt_path", type=str, default=None, help="path to the checkpoint file")
+    parser.add_argument("--data_name", type=str, default="gte", choices=["gte", "triplet"], help="name of the data")
     return parser.parse_args()

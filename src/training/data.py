@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+
 @dataclass
 class Batch:
     input_ids: torch.Tensor
@@ -25,7 +26,7 @@ class Batch:
 
 
 class DistilDataset(Dataset):
-    def __init__(self, dataset:Dataset, embedding:np.ndarray):
+    def __init__(self, dataset: Dataset, embedding: np.ndarray):
         super().__init__()
         self.dataset = dataset
         self.embedding = embedding
@@ -39,7 +40,7 @@ class DistilDataset(Dataset):
             "anc": self.dataset[idx]["anc"],
             "anc_features": self.embedding[self.dataset[idx]["anc_emb_idx"]].copy(),
             "pos": self.dataset[idx]["pos"],
-            "pos_features": self.embedding[self.dataset[idx]["pos_emb_idx"]].copy()
+            "pos_features": self.embedding[self.dataset[idx]["pos_emb_idx"]].copy(),
         }
 
 
@@ -62,12 +63,15 @@ class DataCollatorForDistill:
         teacher_features = [torch.Tensor(s["anc_features"]) for s in samples]
         inputs = self.preprocess(texts)
 
-        return {"input_ids": inputs["input_ids"],
-                "attention_mask": inputs["attention_mask"],
-                "teacher_features": teacher_features,
-            }
+        return {
+            "input_ids": inputs["input_ids"],
+            "attention_mask": inputs["attention_mask"],
+            "teacher_features": teacher_features,
+        }
+
+
 class DataCollatorForContrastiveDistill(DataCollatorForDistill):
-    def __init__(self, tokenizer, max_length = 4096, disable_instruction:bool = False):
+    def __init__(self, tokenizer, max_length=4096, disable_instruction: bool = False):
         super().__init__(tokenizer, max_length)
         self.disable_instruction = disable_instruction
 
@@ -80,13 +84,15 @@ class DataCollatorForContrastiveDistill(DataCollatorForDistill):
         pos_features = [torch.Tensor(s["pos_features"]) for s in samples]
         anc_inputs = self.preprocess(anc_text)
         pos_inputs = self.preprocess(pos_text)
-        return {"input_ids": anc_inputs["input_ids"],
-                "attention_mask": anc_inputs["attention_mask"],
-                "pos": pos_inputs,
-                "teacher_features": anc_features,
-                "pos_features": pos_features
-            }
-    
+        return {
+            "input_ids": anc_inputs["input_ids"],
+            "attention_mask": anc_inputs["attention_mask"],
+            "pos": pos_inputs,
+            "teacher_features": anc_features,
+            "pos_features": pos_features,
+        }
+
+
 class DataModuleForDistill(L.LightningDataModule):
     def __init__(
         self,
@@ -96,7 +102,7 @@ class DataModuleForDistill(L.LightningDataModule):
         batch_size: int,
         num_workers: int,
         eval_batch_size: Optional[int] = None,
-        max_length: int = 4096
+        max_length: int = 4096,
     ):
         super().__init__()
         self.data_dir = data_dir
@@ -105,13 +111,13 @@ class DataModuleForDistill(L.LightningDataModule):
         self.eval_batch_size = eval_batch_size if eval_batch_size else batch_size
         self.num_workers = num_workers
         self.tokenizer = student_tokenizer
-        
+
         # TODO: ここのハードコード気持ち悪いかも！！
         if "triplet" or "gte" in str(self.data_dir):
             self.collate_fn = DataCollatorForContrastiveDistill(
                 tokenizer=self.tokenizer,
                 max_length=max_length,
-                disable_instruction = True if "gte" in str(self.data_dir) else False,
+                disable_instruction=True if "gte" in str(self.data_dir) else False,
             )
         else:
             self.collate_fn = DataCollatorForDistill(
@@ -120,9 +126,9 @@ class DataModuleForDistill(L.LightningDataModule):
             )
         self.datasets = {}
 
-    def load_data_and_emb(self,data_path):
+    def load_data_and_emb(self, data_path):
         datasets = load_from_disk(data_path)
-        embeddings = np.load(os.path.join(data_path ,"emb.npy"),  mmap_mode='r')
+        embeddings = np.load(os.path.join(data_path, "emb.npy"), mmap_mode="r")
         return datasets, embeddings
 
     def setup(self, stage: str):
@@ -143,7 +149,7 @@ class DataModuleForDistill(L.LightningDataModule):
                 datasets = datasets.shuffle(seed=42).select(range(int(self.data_num)))
             else:
                 raise ValueError(f"Data path {data_path} does not exist.")
-        datasets = datasets.train_test_split(test_size=int(min(len(datasets)*0.1, 1000)), seed=42, shuffle=True)
+        datasets = datasets.train_test_split(test_size=int(min(len(datasets) * 0.1, 1000)), seed=42, shuffle=True)
         logger.info(f"Total samples: {len(datasets)}, embeddings: {embeddings.shape}")
         self.datasets["train"] = DistilDataset(datasets["train"], embeddings)
         self.datasets["test"] = DistilDataset(datasets["test"], embeddings)

@@ -4,19 +4,24 @@ from torch.optim import Optimizer
 from typing import Optional, Dict, Any
 from transformers.optimization import get_cosine_schedule_with_warmup
 
+
 def get_scheduler(
     name: str,
     optimizer: Optimizer,
     num_warmup_steps: Optional[int] = None,
     num_training_steps: Optional[int] = None,
     scheduler_specific_kwargs: Optional[dict] = None,
-    ):
+):
     if name == "constant":
         return get_constant_schedule_with_warmup(optimizer, num_warmup_steps, **(scheduler_specific_kwargs or {}))
     elif name == "wsd":
-        return get_stable_decay_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, **(scheduler_specific_kwargs or {}))
+        return get_stable_decay_schedule_with_warmup(
+            optimizer, num_warmup_steps, num_training_steps, **(scheduler_specific_kwargs or {})
+        )
     elif name == "cosine":
-        return get_cosine_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, **(scheduler_specific_kwargs or {}))
+        return get_cosine_schedule_with_warmup(
+            optimizer, num_warmup_steps, num_training_steps, **(scheduler_specific_kwargs or {})
+        )
     else:
         raise ValueError(f"Unknown scheduler name: {name}")
 
@@ -41,12 +46,20 @@ def get_constant_schedule_with_warmup(optimizer: Optimizer, num_warmup_steps: in
     lr_lambda = partial(_get_constant_schedule_with_warmup_lr_lambda, num_warmup_steps=num_warmup_steps)
     return LambdaLR(optimizer, lr_lambda, last_epoch=last_epoch)
 
+
 def _get_constant_schedule_with_warmup_lr_lambda(current_step: int, num_warmup_steps: int):
     if current_step < num_warmup_steps:
         return float(current_step) / float(max(1, num_warmup_steps))
     return 1.0
 
-def get_stable_decay_schedule_with_warmup(optimizer: Optimizer, num_warmup_steps: int, num_training_steps:int,  num_decay_steps: int = None, last_epoch: int = -1):
+
+def get_stable_decay_schedule_with_warmup(
+    optimizer: Optimizer,
+    num_warmup_steps: int,
+    num_training_steps: int,
+    num_decay_steps: int = None,
+    last_epoch: int = -1,
+):
     """
     Create a schedule that keeps the learning rate constant, setting a warm-up period before it and a decay period after it.
     During the warm-up period, the learning rate increases linearly from 0 to the initial learning rate (lr) set by the optimizer.
@@ -70,14 +83,20 @@ def get_stable_decay_schedule_with_warmup(optimizer: Optimizer, num_warmup_steps
     if num_decay_steps is None:
         num_decay_steps = 2 * num_warmup_steps
 
-    lr_lambda = partial(_get_stable_decay_schedule_with_warmup_lr_lambda, num_warmup_steps=num_warmup_steps, num_decay_steps=num_decay_steps, num_training_steps=num_training_steps)
+    lr_lambda = partial(
+        _get_stable_decay_schedule_with_warmup_lr_lambda,
+        num_warmup_steps=num_warmup_steps,
+        num_decay_steps=num_decay_steps,
+        num_training_steps=num_training_steps,
+    )
     return LambdaLR(optimizer, lr_lambda, last_epoch=last_epoch)
 
-def _get_stable_decay_schedule_with_warmup_lr_lambda(current_step: int, num_warmup_steps: int, num_decay_steps: int, num_training_steps: int):
+
+def _get_stable_decay_schedule_with_warmup_lr_lambda(
+    current_step: int, num_warmup_steps: int, num_decay_steps: int, num_training_steps: int
+):
     if current_step < num_warmup_steps:
         return float(current_step) / float(max(1, num_warmup_steps))
     elif current_step < num_training_steps - num_decay_steps:
         return 1.0
     return float(num_training_steps - current_step) / float(max(1, num_decay_steps))
-
-
