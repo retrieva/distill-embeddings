@@ -67,9 +67,15 @@ class DataCollatorForDistill:
                 "teacher_features": teacher_features,
             }
 class DataCollatorForContrastiveDistill(DataCollatorForDistill):
+    def __init__(self, tokenizer, max_length = 4096, disable_instruction:bool = False):
+        super().__init__(tokenizer, max_length)
+        self.disable_instruction = disable_instruction
+
     def __call__(self, samples):
         anc_text = [s["anc"] for s in samples]
         pos_text = [s["pos"] for s in samples]
+        if self.disable_instruction:
+            anc_text = [text.split("Query:")[1].strip() for text in anc_text]
         anc_features = [torch.Tensor(s["anc_features"]) for s in samples]
         pos_features = [torch.Tensor(s["pos_features"]) for s in samples]
         anc_inputs = self.preprocess(anc_text)
@@ -105,6 +111,7 @@ class DataModuleForDistill(L.LightningDataModule):
             self.collate_fn = DataCollatorForContrastiveDistill(
                 tokenizer=self.tokenizer,
                 max_length=max_length,
+                disable_instruction = True if "gte" in str(self.data_dir) else False,
             )
         else:
             self.collate_fn = DataCollatorForDistill(
