@@ -99,8 +99,9 @@ class DataModuleForDistill(L.LightningDataModule):
         self.eval_batch_size = eval_batch_size if eval_batch_size else batch_size
         self.num_workers = num_workers
         self.tokenizer = student_tokenizer
-
-        if "triplet" in str(self.data_dir):
+        
+        # TODO: ここのハードコード気持ち悪いかも！！
+        if "triplet" or "gte" in str(self.data_dir):
             self.collate_fn = DataCollatorForContrastiveDistill(
                 tokenizer=self.tokenizer,
                 max_length=max_length,
