@@ -40,3 +40,55 @@ explicit = true
 torch = [
   { index = "tocrh-gpu" },
 ]
+
+[tool.ruff]
+line-length = 119
+target-version = "py312"
+
+[tool.ruff.lint]
+# 有効にするLintルールのセットを指定します。
+# "E", "F": Flake8の基本的なエラーとロジックエラーを有効化 (必須レベル)
+# "W": Flake8の警告
+# "I": isort互換のインポート整理ルール
+# "UP": pyupgradeのルール。新しいPython構文への自動書き換えを提案。
+# "B": flake8-bugbearのルール。よくあるバグや設計上の問題点を検出。
+# "C4": flake8-comprehensionsのルール。冗長な内包表記を簡潔に修正。
+# "A": flake8-builtinsのルール。組み込み関数や変数名のシャドーイングを警告。
+select = ["E", "F", "W", "I", "UP", "B", "C4", "A"]
+
+# 無効にする（無視する）ルールを指定します。
+# E501: 1行の文字数オーバー（これはruff formatが担当するのでLintからは除外）
+# B905: `zip`をstrict=Trueなしで使うことへの警告。場合によっては不要なので除外候補。
+# E402: モジュールレベルのインポートがファイルの先頭にない（実行コードの後にimportがある場合）
+ignore = ["E501", "B905", "E402"]
+
+# 自動修正できないルール（例：複雑すぎて人間の判断が必要なもの）を無視する設定
+# CI/CDではチェックしたいが、開発中は無視したい場合に便利です。
+# unfixable = []
+
+# 除外するファイルやディレクトリ
+# .venv（仮想環境）や自動生成ファイルなどを指定します。
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+]
+
+[tool.ruff.format]
+preview = true

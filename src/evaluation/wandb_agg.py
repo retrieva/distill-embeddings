@@ -1,6 +1,8 @@
-import wandb
-import pandas as pd
 import os
+
+import pandas as pd
+
+import wandb
 
 # --- 1, 2, 3は変更なし ---
 api = wandb.Api()
@@ -9,7 +11,7 @@ filters = {
         {"config.num_epochs": {"$gte": 3}},
         {"config.batch_size": {"$gte": 64}},
         {"tags": "Qwen_Qwen3-Embedding-4B_encoded"},
-        {"state": "finished"}
+        {"state": "finished"},
     ]
 }
 group_code_name = "ep3_bs64_4B"
@@ -23,13 +25,13 @@ for run in runs:
         # mteb_finalで始まるキーのみを抽出し、プレフィックスを削除
         mteb_final_data = {}
         for k, v in summary.items():
-            if k.startswith('mteb_final/'):
+            if k.startswith("mteb_final/"):
                 # mteb_final/ プレフィックスを削除
-                clean_key = k.replace('mteb_final/', '')
+                clean_key = k.replace("mteb_final/", "")
                 mteb_final_data[clean_key] = v
-        
+
         if mteb_final_data:
-            mteb_final_data['run_name'] = run.name
+            mteb_final_data["run_name"] = run.name
             all_summaries.append(mteb_final_data)
 
 # --- 5. CSVファイルを生成 ---
@@ -39,11 +41,11 @@ if all_summaries:
     os.makedirs(output_dir, exist_ok=True)
 
     # run_nameを除いたメトリクス名を取得
-    metrics_to_export = [col for col in combined_df.columns if col != 'run_name']
+    metrics_to_export = [col for col in combined_df.columns if col != "run_name"]
 
     # 全メトリクスをまとめた統合CSV作成
-    integrated_output_path = f'{output_dir}/{group_code_name}_metrics.csv'
-    combined_df.set_index('run_name').to_csv(integrated_output_path)
+    integrated_output_path = f"{output_dir}/{group_code_name}_metrics.csv"
+    combined_df.set_index("run_name").to_csv(integrated_output_path)
     print(f"Saved integrated CSV: {integrated_output_path}")
 
     print(f"✅ All CSV files saved to the '{output_dir}' directory.")
