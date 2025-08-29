@@ -18,14 +18,14 @@ if __name__ == "__main__":
     num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
     global_batch_size = args.batch_size * num_devices
     code_name = f"{args.data_name}_e{args.num_epochs}_bs{global_batch_size}_{args.scheduler}{args.lr}_{args.loss_type}{use_pos}"
-    args.output_dir = Path(args.output_dir) / args.student_model.replace('/', '_') / args.teacher_model.replace('/', '_') / args.dataset_name / code_name
+    args.output_dir = Path(args.output_dir) / args.student_model.replace('/', '_') / args.teacher_model.replace('/', '_') / args.data_size / code_name
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     model = KDForSentEmb(args)
     model.configure_model()
     data = DataModuleForDistill(
         data_dir=data_dir,
-        data_num = args.dataset_name,
+        data_num = args.data_size,
         student_tokenizer=model.student_model.tokenizer,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
@@ -51,7 +51,7 @@ if __name__ == "__main__":
             name=os.path.basename(args.output_dir),
             project="distillation",
             group=args.student_model.replace('/', '_'),
-            tags=[args.dataset_name,f"{args.teacher_model.replace('/','_')}_encoded"],
+            tags=[args.data_size,f"{args.teacher_model.replace('/','_')}_encoded"],
             save_dir=args.output_dir,
             id=args.your_run_id if args.your_run_id else None,
             resume="must" if args.your_run_id else None,
