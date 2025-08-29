@@ -16,7 +16,7 @@ tasks_*.yaml
 prev*
 test.py
 wandb_agg_output/
-
+agg_config.yaml
 # C extensions
 *.so
 
