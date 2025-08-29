@@ -122,8 +122,16 @@ class DataModuleForDistill(L.LightningDataModule):
         if os.path.exists(data_path):
             datasets, embeddings = self.load_data_and_emb(data_path)
         else:
-            if int(self.data_num) < 1_000_000:
-                datasets, embeddings = self.load_data_and_emb(os.path.join(self.data_dir, '1000000'))
+            exist_data_dir_list = os.listdir(self.data_dir)
+            exist_data_num_list = []
+            for num in exist_data_dir_list:
+                try:
+                    exist_data_num_list.append(int(num))
+                except ValueError:
+                    continue
+            max_data_num = max(exist_data_num_list) if exist_data_num_list else 0
+            if int(self.data_num) < max_data_num:
+                datasets, embeddings = self.load_data_and_emb(os.path.join(self.data_dir, str(max_data_num)))
                 datasets = datasets.shuffle(seed=42).select(range(int(self.data_num)))
             else:
                 raise ValueError(f"Data path {data_path} does not exist.")
