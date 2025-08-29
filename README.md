@@ -152,6 +152,8 @@ jpn
 ## 訓練データ
 
 ### 日本語
+#### triplet
+
 `cl-nagoya/ruri-dataset-v2-pt`から、いくつかの不適切そうな？データセットを排除して利用
 主に簡単すぎる言い換えデータ、多すぎるWikiドメインを削った
 合計1Mになるように割合そのまま減らした
@@ -172,6 +174,7 @@ jpn
 ```
 
 ### 英語
+#### triplet
 `sentence-transformers/embedding-training-data`からいくつか排除
 主に似たようなデータがたくさんあるもの、ライセンスが怪しいもんを削った
 各データMAX1Mに削って、そこから合計1Mになるように割合そのまま減らした
@@ -192,8 +195,24 @@ jpn
         "PAQ_pairs",
         "flickr30k_captions"
 ```
+#### gte
+mGTEの論文に書かれている英語の訓練セットを再現
 
-
+各データと元データは以下
+```
+- microsoft/ms_marcoから拝借
+    - MS MARCO
+- bgeの公開訓練データから拝借
+    - Natural Questions (NQ)
+    - TriviaQA 
+    - HotpotQA
+    - SQuAD
+    - AllNLI from SimCSE
+- MTEBのtrainデータを拝借
+    - FEVER
+```
+- 教師埋め込みの精度を確保するため、教師モデルによるエンコード時にはInstructionを付けてみた
+- posが複数ある場合は銭湯のみ利用、データは全部で0.8M件となった
 
 ## 訓練設定
 
