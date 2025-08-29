@@ -12,12 +12,12 @@ if __name__ == "__main__":
     args = parse_args()
     L.seed_everything(42, workers=True)
     torch.set_float32_matmul_precision("high")
-    data_dir = Path(args.data_dir) / f"triplet-{args.language}" / f"{args.teacher_model.replace('/','_')}_encoded"
+    data_dir = Path(args.data_dir) / f"{args.data_name}-{args.language}" / f"{args.teacher_model.replace('/','_')}_encoded"
     use_pos = "_w-pos" if args.use_pos else ""
     # GPU数を取得してグローバルバッチサイズを計算
     num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
     global_batch_size = args.batch_size * num_devices
-    code_name = f"e{args.num_epochs}_bs{global_batch_size}_{args.scheduler}{args.lr}_{args.loss_type}{use_pos}"
+    code_name = f"{args.data_name}_e{args.num_epochs}_bs{global_batch_size}_{args.scheduler}{args.lr}_{args.loss_type}{use_pos}"
     args.output_dir = Path(args.output_dir) / args.student_model.replace('/', '_') / args.teacher_model.replace('/', '_') / args.dataset_name / code_name
     args.output_dir.mkdir(parents=True, exist_ok=True)
 

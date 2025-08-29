@@ -115,4 +115,7 @@ def parse_args():
                         help="your run id")
     parser.add_argument("--ckpt_path", type=str, default=None,
                         help="path to the checkpoint file")
+    parser.add_argument("--data_name", type=str, default="gte",
+                        choices=["gte", "triplet"],
+                        help="name of the data")
     return parser.parse_args()
