@@ -12,7 +12,8 @@ for loss_type in "kld"; do
         --student_model nomic-ai/modernbert-embed-base-unsupervised \
         --teacher_model Qwen/Qwen3-Embedding-4B \
         --data_dir data \
-        --dataset_name 2000 \
+        --data_name gte \
+        --data_size 1000 \
         --output_dir output/result \
         --batch_size 4 \
         --num_epochs 1 \
