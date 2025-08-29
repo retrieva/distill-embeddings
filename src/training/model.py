@@ -3,10 +3,10 @@ import torch
 from torch import Tensor
 import lightning as L
 from transformers import AutoConfig
-from src.loss import get_loss_fn, LossOutput
+from src.training.loss import get_loss_fn, LossOutput
 from sentence_transformers import SentenceTransformer
-from src.data import Batch
-from src.scheduler import get_scheduler
+from src.training.data import Batch
+from src.training.scheduler import get_scheduler
 import mteb
 import yaml
 from IsoScore.IsoScore import *

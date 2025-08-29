@@ -5,8 +5,8 @@ import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
 from lightning import LightningModule
-from src.distil_losses import *
-from src.data import Batch
+from src.training.distil_losses import *
+from src.training.data import Batch
 from einops import einsum
 
 taid_forward_fn_map = {

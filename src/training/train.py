@@ -1,9 +1,9 @@
 import os
 import lightning as L
 from lightning.pytorch.loggers import WandbLogger
-from src.data import DataModuleForDistill
-from src.model import KDForSentEmb
-from src.arguments import parse_args
+from src.training.data import DataModuleForDistill
+from src.training.model import KDForSentEmb
+from src.training.arguments import parse_args
 from pathlib import Path
 from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 import torch
