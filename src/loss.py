@@ -13,6 +13,7 @@ taid_forward_fn_map = {
     "ckd": CKD,
     "kld": KLD,
     "mse": MSE,
+    "dp_kld": DP_KLD,
     "js":JasperStella
 }
 
@@ -157,6 +158,8 @@ def get_loss_fn(args):
         distil_loss_fn = MSE(args)
     elif args.loss_type == "kld":
         distil_loss_fn = KLD(args)
+    elif args.loss_type == "dp_kld":
+        distil_loss_fn = DP_KLD(args)
     elif args.loss_type == "js":
         distil_loss_fn = JasperStella(args)
     elif args.loss_type == "distill":
