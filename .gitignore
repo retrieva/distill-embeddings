@@ -2,20 +2,24 @@
 __pycache__/
 *.py[codz]
 *$py.class
-data/
-output/
+data/*
+output/*
 *.log
 *.out
-output
-data
-wandb/
-logs
+wandb/*
+logs/*
 temp/
 prev
 tasks_*.yaml
 prev*
 test.py
 wandb_agg_output/
+
+!data/.gitkeep
+!wandb/.gitkeep
+!output/.gitkeep
+!logs/.gitkeep
+agg_config.yaml
 
 # C extensions
 *.so
