@@ -6,7 +6,7 @@ from sentence_transformers import SentenceTransformer
 
 def load_model(model_name: str | Path, return_output_folder: bool = False):
     if model_name.endswith(".ckpt"):
-        checkpoint = torch.load(model_name)
+        checkpoint = torch.load(model_name, weights_only=False)
         model_weights = {
             k.removeprefix("student_model."): v
             for k, v in checkpoint["state_dict"].items()
