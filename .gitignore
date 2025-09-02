@@ -14,6 +14,7 @@ tasks_*.yaml
 prev*
 test.py
 wandb_agg_output/
+anly_src/
 
 agg_config.yaml
 
