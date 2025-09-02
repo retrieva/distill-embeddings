@@ -1,14 +1,15 @@
-import os
-from typing import Optional
-
-import torch
-import lightning as L
-from transformers import PreTrainedTokenizer
-from datasets import load_from_disk
-from torch.utils.data import DataLoader, Dataset
-from dataclasses import dataclass
-import numpy as np
 import logging
+import os
+import random
+from collections import defaultdict
+from dataclasses import dataclass
+
+import lightning as L
+import numpy as np
+import torch
+from datasets import load_from_disk
+from torch.utils.data import DataLoader, Dataset, Sampler
+from transformers import PreTrainedTokenizer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -23,6 +24,47 @@ class Batch:
     pos: dict[str, torch.Tensor]
     teacher_features: torch.Tensor
     pos_features: torch.Tensor
+
+
+class ShuffledTaskBatchSampler(Sampler[list[int]]):
+    """
+    バッチ内のタスクを統一しつつ、バッチの順序をタスク間でシャッフルするサンプラー
+    """
+
+    def __init__(self, task_indices: dict[str, list[int]], batch_size: int, shuffle: bool = True):
+        """
+        Args:
+            task_indices (dict): タスク名をキー、インデックスのリストを値とする辞書
+            batch_size (int): 各バッチのサイズ
+            shuffle (bool): エポックごとにデータをシャッフルするかどうか
+        """
+        self.task_indices = task_indices
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+
+        self.all_batches = self._generate_all_batches()
+
+    def _generate_all_batches(self) -> list[list[int]]:
+        """全タスクの全バッチを生成する"""
+        all_batches = []
+        for task_name in self.task_indices:
+            indices = self.task_indices[task_name][:]  # コピーを作成
+            if self.shuffle:
+                # タスク内のデータ順をシャッフル
+                random.shuffle(indices)
+
+            # バッチサイズごとに区切っていく
+            for i in range(0, len(indices), self.batch_size):
+                all_batches.append(indices[i : i + self.batch_size])
+        return all_batches
+
+    def __iter__(self):
+        if self.shuffle:
+            random.shuffle(self.all_batches)
+        yield from self.all_batches
+
+    def __len__(self) -> int:
+        return len(self.all_batches)
 
 
 class DistilDataset(Dataset):
@@ -41,6 +83,7 @@ class DistilDataset(Dataset):
             "anc_features": self.embedding[self.dataset[idx]["anc_emb_idx"]].copy(),
             "pos": self.dataset[idx]["pos"],
             "pos_features": self.embedding[self.dataset[idx]["pos_emb_idx"]].copy(),
+            "subset": self.dataset[idx]["subset"],
         }
 
 
@@ -101,7 +144,7 @@ class DataModuleForDistill(L.LightningDataModule):
         student_tokenizer: PreTrainedTokenizer,
         batch_size: int,
         num_workers: int,
-        eval_batch_size: Optional[int] = None,
+        eval_batch_size: int | None = None,
         max_length: int = 4096,
     ):
         super().__init__()
@@ -154,24 +197,45 @@ class DataModuleForDistill(L.LightningDataModule):
         self.datasets["train"] = DistilDataset(datasets["train"], embeddings)
         self.datasets["test"] = DistilDataset(datasets["test"], embeddings)
 
+    def _get_task_indices(self, dataset: Dataset) -> dict[str, list[int]]:
+        """
+        データセットをスキャンし、タスク名ごとのインデックスリストを作成する。
+
+        Args:
+            dataset (Dataset): `subset`属性にタスク名のリストを持つデータセット。
+
+        Returns:
+            dict[str, list[int]]: タスク名をキー、インデックスのリストを値とする辞書。
+                                    (例: {'task_a': [0, 2, 5], 'task_b': [1, 3, 4]})
+        """
+        task_indices = defaultdict(list)
+        for idx, task_name in enumerate(dataset.dataset["subset"]):
+            task_indices[task_name].append(idx)
+
+        return dict(task_indices)
+
     def train_dataloader(self):
         return DataLoader(
             self.datasets["train"],
-            batch_size=self.batch_size,
             num_workers=self.num_workers,
+            batch_sampler=ShuffledTaskBatchSampler(
+                task_indices=self._get_task_indices(self.datasets["train"]),
+                batch_size=self.batch_size,
+                shuffle=True,
+            ),
             collate_fn=self.collate_fn,
-            shuffle=True,
             pin_memory=True,
-            drop_last=True,
         )
 
     def val_dataloader(self):
         return DataLoader(
             self.datasets["test"],
-            batch_size=self.eval_batch_size,
             num_workers=self.num_workers,
-            shuffle=False,
+            batch_sampler=ShuffledTaskBatchSampler(
+                task_indices=self._get_task_indices(self.datasets["test"]),
+                batch_size=self.eval_batch_size,
+                shuffle=False,
+            ),
             collate_fn=self.collate_fn,
             pin_memory=True,
-            drop_last=True,
         )
