@@ -29,7 +29,7 @@ def parse_args():
     training_args.add_argument("--batch_size", type=int, default=8, help="batch size per device")
     training_args.add_argument("--lr", type=float, default=5e-5, help="learning rate")
     training_args.add_argument(
-        "--scheduler", type=str, default="cosine", choices=["constant", "wsd", "cosine"], help="scheduler type"
+        "--scheduler", type=str, default="wsd", choices=["constant", "wsd", "cosine"], help="scheduler type"
     )
     training_args.add_argument(
         "--warmup_ratio", type=float, default=0.05, help="warmup ratio for learning rate scheduler"
