@@ -14,3 +14,4 @@ for model_name in "nomic-ai/modernbert-embed-base-unsupervised"; do
         --model_name 'output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B/794554/gte_e3_bs128_cosine5e-05_taid-kld_w-pos/checkpoints/epoch=02.ckpt' \
         --batch_size 128 \
         --benchmark_name "MTEB(eng, v2)"
+done
