@@ -11,6 +11,7 @@ def main():
     parser.add_argument(
         "--lang", "-l", choices=["jpn", "eng"], default="jpn", help="評価言語を選択 (jpn: 日本語, eng: 英語)"
     )
+    parser.add_argument("--benchmark_name", type=str, default="on_eval_tasks", help="Name of the benchmark.")
     args = parser.parse_args()
 
     models = [
@@ -28,10 +29,15 @@ def main():
             "lightonai/modernbert-embed-large",
         ])
 
-    with open("tasks.yaml") as file:
-        tasks = yaml.safe_load(file)
-        tasks = tasks[args.lang]["on_train_end_tasks"]
-
+    if args.benchmark_name in ["on_eval_tasks", "on_train_end_tasks", "on_train_tasks"]:
+        with open("tasks.yaml") as file:
+            tasks = yaml.safe_load(file)
+            tasks = tasks[args.lang][args.benchmark_name]
+    elif args.benchmark_name in ["MTEB(eng, v2)"]:
+        benchmark = mteb.get_benchmark(args.benchmark_name)
+        tasks = benchmark.tasks
+    else:
+        raise ValueError(f"Unknown benchmark name: {args.benchmark_name}")
     print(f"評価言語: {args.lang}")
     print(f"タスク数: {len(tasks)}")
 

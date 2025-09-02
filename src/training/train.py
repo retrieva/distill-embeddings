@@ -18,10 +18,11 @@ if __name__ == "__main__":
         Path(args.data_dir) / f"{args.data_name}-{args.language}" / f"{args.teacher_model.replace('/', '_')}_encoded"
     )
     use_pos = "_w-pos" if args.use_pos else ""
+    add_prefix = "_prefix" if args.add_prefix else ""
     # GPU数を取得してグローバルバッチサイズを計算
     num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
     global_batch_size = args.batch_size * num_devices
-    code_name = f"{args.data_name}_e{args.num_epochs}_bs{global_batch_size}_{args.scheduler}{args.lr}_{args.loss_type}{use_pos}"
+    code_name = f"{args.data_name}_e{args.num_epochs}_bs{global_batch_size}_{args.scheduler}{args.lr}_{args.loss_type}{use_pos}{add_prefix}"
     args.output_dir = (
         Path(args.output_dir)
         / args.student_model.replace("/", "_")
@@ -40,6 +41,7 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         max_length=args.max_length,
+        add_prefix=args.add_prefix,
     )
 
     modelcheckpoint = ModelCheckpoint(

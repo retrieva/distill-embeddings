@@ -5,9 +5,9 @@ This implementation is based on (https://github.com/UKPLab/sentence-transformers
 import torch
 import torch.nn.functional as F
 from einops import einsum
-from .base import DistilLoss
 from lightning import LightningModule
-from typing import Dict, Optional
+
+from .base import DistilLoss
 
 
 class KLD(DistilLoss):
@@ -21,7 +21,7 @@ class KLD(DistilLoss):
 
     def __init__(
         self,
-        args: Optional[Dict] = None,
+        args: dict | None = None,
     ):
         super().__init__()
         self.temp = args.kld_temp if hasattr(args, "kld_temp") else 2.0

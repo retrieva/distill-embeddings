@@ -16,6 +16,16 @@ logger = logging.getLogger(__name__)
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+PREFIX_MAP = {
+    "HotpotQA": ["query:", "document:"],
+    "NQ": ["query:", "document:"],
+    "SQuAD": ["query:", "document:"],
+    "Trivia": ["query:", "document:"],
+    "en_NLI_data": ["query:", "query:"],
+    "fever": ["query:", "document:"],
+    "ms-marco": ["query:", "document:"],
+}
+
 
 @dataclass
 class Batch:
@@ -24,6 +34,7 @@ class Batch:
     pos: dict[str, torch.Tensor]
     teacher_features: torch.Tensor
     pos_features: torch.Tensor
+    subset: list[str]
 
 
 class ShuffledTaskBatchSampler(Sampler[list[int]]):
@@ -114,15 +125,21 @@ class DataCollatorForDistill:
 
 
 class DataCollatorForContrastiveDistill(DataCollatorForDistill):
-    def __init__(self, tokenizer, max_length=4096, disable_instruction: bool = False):
+    def __init__(self, tokenizer, max_length=4096, disable_instruction: bool = False, add_prefix: bool = False):
         super().__init__(tokenizer, max_length)
         self.disable_instruction = disable_instruction
+        self.add_prefix = add_prefix
 
     def __call__(self, samples):
         anc_text = [s["anc"] for s in samples]
         pos_text = [s["pos"] for s in samples]
         if self.disable_instruction:
             anc_text = [text.split("Query:")[1].strip() for text in anc_text]
+        if self.add_prefix:
+            for s in samples:
+                subset = s["subset"]
+                anc_text = [f"{PREFIX_MAP[subset][0]} {text}" for text in anc_text]
+                pos_text = [f"{PREFIX_MAP[subset][1]} {text}" for text in pos_text]
         anc_features = [torch.Tensor(s["anc_features"]) for s in samples]
         pos_features = [torch.Tensor(s["pos_features"]) for s in samples]
         anc_inputs = self.preprocess(anc_text)
@@ -146,6 +163,7 @@ class DataModuleForDistill(L.LightningDataModule):
         num_workers: int,
         eval_batch_size: int | None = None,
         max_length: int = 4096,
+        add_prefix: bool = False,
     ):
         super().__init__()
         self.data_dir = data_dir
@@ -161,6 +179,7 @@ class DataModuleForDistill(L.LightningDataModule):
                 tokenizer=self.tokenizer,
                 max_length=max_length,
                 disable_instruction=True if "gte" in str(self.data_dir) else False,
+                add_prefix=add_prefix,
             )
         else:
             self.collate_fn = DataCollatorForDistill(

@@ -19,5 +19,6 @@ for loss_type in "kld"; do
         --get_id_iso \
         --use_pos \
         --mteb_eval \
-        --loss_type "$loss_type"
+        --loss_type "$loss_type" \
+        --distill_weight 0.7
 done

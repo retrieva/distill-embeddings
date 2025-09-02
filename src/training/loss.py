@@ -71,13 +71,13 @@ class InfoCSE(nn.Module):
 
 class KDLoss(nn.Module):
     def __init__(
-        self,
-        use_pos,
-        distil_loss_fn: DistilLoss | None = None,
+        self, use_pos, distil_loss_fn: DistilLoss | None = None, distill_weight: float = 1.0, cse_temp: float = 0.05
     ):
         super().__init__()
         self.use_pos = use_pos
         self.distil_loss_fn = distil_loss_fn
+        self.distill_weight = distill_weight
+        self.cse_temp = cse_temp
 
     def forward(
         self,
@@ -121,7 +121,7 @@ class KDLoss(nn.Module):
             global_pos_student_features = None
             global_pos_teacher_features = None
 
-        loss = self.distil_loss_fn(
+        distill_loss_dict = self.distil_loss_fn(
             lightning_module=lightning_module,
             projected_features=global_student_features,
             teacher_features=global_teacher_features,
@@ -130,9 +130,39 @@ class KDLoss(nn.Module):
             validation=validation,
             **kwargs,
         )
-        loss_dict = loss
+        loss_dict = distill_loss_dict
+        if self.distill_weight != 1.0:
+            labels = torch.arange(global_student_features.size(0), device=global_student_features.device)
+            # クエリとキー間の類似度スコアを計算 ab,cb->ac
+            if self.use_pos:
+                scores = (
+                    einsum(
+                        F.normalize(global_student_features, dim=-1),
+                        F.normalize(global_pos_student_features, dim=-1),
+                        "b d, k d -> b k",
+                    )
+                    / self.cse_temp
+                )
+            else:
+                local_pos_features = lightning_module.student_model(batch)["sentence_embedding"]
+                gathered_pos_features = lightning_module.all_gather(local_pos_features, sync_grads=True)
+                global_pos_features = gathered_pos_features.view(-1, gathered_pos_features.shape[-1])
+                scores = (
+                    einsum(
+                        F.normalize(global_student_features, dim=-1),
+                        F.normalize(global_pos_features, dim=-1),
+                        "b d, k d -> b k",
+                    )
+                    / self.cse_temp
+                )
+            # 対照学習損失：生徒埋め込みが対応する教師埋め込みに最も類似するように学習
+            cse_loss = F.cross_entropy(scores, labels)
+            loss = distill_loss_dict["loss"] * self.distill_weight + cse_loss * (1 - self.distill_weight)
+            loss_dict["distill_loss"] = distill_loss_dict["loss"]
+            loss_dict["loss"] = loss
+            loss_dict["cse_loss"] = cse_loss
         return LossOutput(
-            loss=loss["loss"],
+            loss=loss_dict["loss"],
             loss_dict=loss_dict,
         )
 
@@ -166,4 +196,4 @@ def get_loss_fn(args):
         distil_loss_fn = InfoCSE(args)
     else:
         raise NotImplementedError(args.loss_type)
-    return KDLoss(use_pos=args.use_pos, distil_loss_fn=distil_loss_fn)
+    return KDLoss(use_pos=args.use_pos, distil_loss_fn=distil_loss_fn, distill_weight=args.distill_weight)

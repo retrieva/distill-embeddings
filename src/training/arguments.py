@@ -21,6 +21,7 @@ def parse_args():
         "--language", type=str, default="eng", choices=["eng", "jpn"], help="language for experiment"
     )
     data_args.add_argument("--num_workers", type=int, default=4, help="number of workers for data loader")
+    data_args.add_argument("--add_prefix", type=bool, default=True, help="add prefix to input text")
 
     # --- Training Arguments ---
     training_args = parser.add_argument_group("Training Arguments")
@@ -34,6 +35,7 @@ def parse_args():
     training_args.add_argument(
         "--warmup_ratio", type=float, default=0.05, help="warmup ratio for learning rate scheduler"
     )
+    training_args.add_argument("--use_lora", type=bool, default=False, help="use LoRA for training")
 
     # --- Loss & Distillation Arguments ---
     loss_args = parser.add_argument_group("Loss & Distillation Arguments")
@@ -48,6 +50,7 @@ def parse_args():
     loss_args.add_argument("--taid_alpha", type=float, default=5e-4, help="t learning rate for TAID's adaptive update")
     loss_args.add_argument("--taid_beta", type=float, default=0.99, help="momentum coeff for TAID's adaptive update")
     loss_args.add_argument("--taid_disable_adaptive", action="store_true", help="disable the TAID's adaptive update")
+    loss_args.add_argument("--distill_weight", type=float, default=1.0, help="distillation weight")
     # Other loss params
     loss_args.add_argument("--ckd_max_queue_len", type=int, default=65536, help="maximum queue length for CKD")
     loss_args.add_argument("--use_pos", action="store_true", help="use positive samples (contrastive)")
