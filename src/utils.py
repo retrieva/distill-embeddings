@@ -37,13 +37,14 @@ PROMPT_MAP = {
 def get_code_name(args: Namespace | dict) -> str:
     if isinstance(args, dict):
         args = Namespace(**args)
+    use_pos, add_prefix, use_lora, distill_weight = "", "", "", ""
     try:
         use_pos = "_w-pos" if args.use_pos else ""
         add_prefix = "_prefix" if args.add_prefix else ""
-        use_lora = "_lora" if args.use_lora else ""
         distill_weight = f"{str(args.distill_weight)}" if args.distill_weight != 1.0 else ""
+        use_lora = "_lora" if args.use_lora else ""
     except AttributeError:
-        use_pos, add_prefix, use_lora, distill_weight = "", "", "", ""
+        pass
     # GPU数を取得してグローバルバッチサイズを計算
     # num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
 
