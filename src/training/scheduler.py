@@ -1,16 +1,16 @@
-from torch.optim.lr_scheduler import LambdaLR
 from functools import partial
+
 from torch.optim import Optimizer
-from typing import Optional, Dict, Any
+from torch.optim.lr_scheduler import LambdaLR
 from transformers.optimization import get_cosine_schedule_with_warmup
 
 
 def get_scheduler(
     name: str,
     optimizer: Optimizer,
-    num_warmup_steps: Optional[int] = None,
-    num_training_steps: Optional[int] = None,
-    scheduler_specific_kwargs: Optional[dict] = None,
+    num_warmup_steps: int | None = None,
+    num_training_steps: int | None = None,
+    scheduler_specific_kwargs: dict | None = None,
 ):
     if name == "constant":
         return get_constant_schedule_with_warmup(optimizer, num_warmup_steps, **(scheduler_specific_kwargs or {}))
