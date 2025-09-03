@@ -10,7 +10,7 @@ eng:
     - STSBenchmark
     - SICK-R
     # Summarize
-    - SummEvalSummarization.V2
+    # - SummEvalSummarization.V2
   on_train_end_tasks:
       # classification
     - ToxicConversationsClassification # 10%
