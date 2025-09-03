@@ -19,10 +19,12 @@ if __name__ == "__main__":
     )
     use_pos = "_w-pos" if args.use_pos else ""
     add_prefix = "_prefix" if args.add_prefix else ""
+    use_lora = "_lora" if args.use_lora else ""
+    distill_rate = f"{str(args.distill_weight)}" if args.distill_weight != 1.0 else ""
     # GPU数を取得してグローバルバッチサイズを計算
     num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
     global_batch_size = args.batch_size * num_devices
-    code_name = f"{args.data_name}_e{args.num_epochs}_bs{global_batch_size}_{args.scheduler}{args.lr}_{args.loss_type}{use_pos}{add_prefix}"
+    code_name = f"{args.data_name}_e{args.num_epochs}_bs{global_batch_size}_{args.scheduler}{args.lr}_{args.loss_type}{distill_rate}{use_pos}{add_prefix}"
     args.output_dir = (
         Path(args.output_dir)
         / args.student_model.replace("/", "_")

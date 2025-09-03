@@ -8,6 +8,7 @@ import yaml
 from datasets import load_from_disk
 from IsoScore import IsoScore
 from mteb.encoder_interface import PromptType
+from peft import LoraConfig
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 from transformers import AutoConfig
@@ -38,10 +39,23 @@ class SentEmb(L.LightningModule):
             self.on_eval_tasks = yaml.safe_load(file)[args.language]["on_train_end_tasks"]
         self.save_hyperparameters(vars(args))
 
+    def add_lora_adapter(self, model: SentenceTransformer):
+        peft_config = LoraConfig(
+            target_modules="all-linear",
+            r=64,
+            lora_alpha=128,
+            lora_dropout=0.1,
+        )
+        model.add_adapter(peft_config)
+        print(model.active_adapters())
+        return model
+
     def configure_model(self):
         self.student_model = SentenceTransformer(
             self.args.student_model,
         ).bfloat16()
+        if self.args.use_lora:
+            self.student_model = self.add_lora_adapter(self.student_model)
 
     def forward(self, batch: Batch, validation: bool = False, **kwargs) -> LossOutput:
         outputs: LossOutput = self.loss_fn(lightning_module=self, batch=batch, validation=validation, **kwargs)
