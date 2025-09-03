@@ -7,6 +7,7 @@ import torch
 import yaml
 from datasets import load_from_disk
 from IsoScore import IsoScore
+from mteb.encoder_interface import PromptType
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 from transformers import AutoConfig
@@ -41,6 +42,12 @@ class SentEmb(L.LightningModule):
         self.student_model = SentenceTransformer(
             self.args.student_model,
         ).bfloat16()
+        if self.args.add_prefix:
+            model_prompts = {
+                PromptType.query.value: "query: ",
+                PromptType.passage.value: "document: ",
+            }
+            self.student_model.prompts = model_prompts
 
     def forward(self, batch: Batch, validation: bool = False, **kwargs) -> LossOutput:
         outputs: LossOutput = self.loss_fn(lightning_module=self, batch=batch, validation=validation, **kwargs)
@@ -98,7 +105,7 @@ class SentEmb(L.LightningModule):
             # MTEB evaluation
             output_folder = self.args.output_dir / "mteb_eval"
             evaluation = mteb.MTEB(
-                tasks=self.on_train_tasks,
+                tasks=self.on_eval_tasks,
                 task_langs=[self.args.language],
             )
             import warnings
@@ -152,9 +159,6 @@ class SentEmb(L.LightningModule):
             final_mteb_dict = {score.task_name: score.get_score() for score in scores}
             final_summary_dict = {f"mteb_final/{k}": v for k, v in final_mteb_dict.items()}
 
-            # 平均スコアも計算して保存
-            avg_score = sum(final_mteb_dict.values()) / len(final_mteb_dict)
-            final_summary_dict["mteb_final/average"] = avg_score
             self.logger.experiment.summary.update(final_summary_dict)
         except Exception as e:
             self.print(f"Error during MTEB evaluation: {e}")
