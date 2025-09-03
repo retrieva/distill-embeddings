@@ -3,6 +3,7 @@ import argparse
 import mteb
 import pandas as pd
 import yaml
+from mteb.encoder_interface import PromptType
 from mteb.leaderboard.table import create_tables
 from mteb.load_results.benchmark_results import ModelResult
 
@@ -21,8 +22,13 @@ def main(args):
         tasks = benchmark.tasks
     else:
         raise ValueError(f"Unknown benchmark name: {args.benchmark_name}")
+    if args.add_prefix:
+        model_prompts = {
+            PromptType.query.value: "query: ",
+            PromptType.passage.value: "document: ",
+        }
+        model.prompts = model_prompts
     evaluation = mteb.MTEB(tasks=tasks, task_langs=[args.language])
-    evaluation.tasks[0].calculate_metadata_metrics()
     import warnings
 
     with warnings.catch_warnings():
@@ -35,6 +41,7 @@ def main(args):
             num_workers=args.num_workers,
             trust_remote_code=True,
             verbosity=1,
+            overwrite_results=True,
         )
     scores_long = ModelResult(
         model_name=model_name,
@@ -69,6 +76,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size for evaluation.")
     parser.add_argument("--num_workers", type=int, default=4, help="Number of workers for data loading.")
-    parser.add_argument("--benchmark_name", type=str, default="on_eval_tasks", help="Name of the benchmark.")
+    parser.add_argument("--benchmark_name", type=str, default="on_train_end_tasks", help="Name of the benchmark.")
+    parser.add_argument("--add_prefix", type=bool, default=True, help="Whether to add prefix to the input.")
     args = parser.parse_args()
     main(args)
