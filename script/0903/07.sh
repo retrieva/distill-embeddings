@@ -10,14 +10,7 @@ module load cuda cudnn nccl gcc
 nvidia-smi
 uv sync
 model_paths=(
-"output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B/794554/gte_e3_bs128_wsd0.0001_js_w-pos_prefix/checkpoints/epoch=02-v1.ckpt"
-"output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B/794554/gte_e3_bs128_wsd5e-05_js_w-pos_prefix/checkpoints/epoch=02-v1.ckpt"
-"output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B/794554/gte_e3_bs128_wsd5e-05_kld_w-pos_prefix/checkpoints/epoch=02-v1.ckpt"
-"output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B/794554/gte_e3_bs128_wsd0.0001_kld_w-pos_prefix/checkpoints/epoch=02-v1.ckpt"
-"output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B/794554/gte_e3_bs128_wsd0.0001_taid-kld_w-pos/checkpoints/epoch=02-v1.ckpt"
-"output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B/794554/gte_e3_bs128_wsd0.0001_kld_w-pos/checkpoints/epoch=02-v1.ckpt"
-"output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B/794554/gte_e3_bs128_wsd0.0001_ckd_w-pos_prefix/checkpoints/epoch=02-v1.ckpt"
-"output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B/794554/gte_e3_bs128_wsd5e-05_ckd_w-pos_prefix/checkpoints/epoch=02-v1.ckpt"
+"output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B/794554/gte_e10_bs128_wsd0.0001_taid-kld_w-pos_prefix/checkpoints/epoch=09.ckpt"
 )
 for model_path in ${model_paths[@]}; do
     uv run python -m src.evaluation.run_mteb \
