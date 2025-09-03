@@ -42,12 +42,6 @@ class SentEmb(L.LightningModule):
         self.student_model = SentenceTransformer(
             self.args.student_model,
         ).bfloat16()
-        if self.args.add_prefix:
-            model_prompts = {
-                PromptType.query.value: "query: ",
-                PromptType.passage.value: "document: ",
-            }
-            self.student_model.prompts = model_prompts
 
     def forward(self, batch: Batch, validation: bool = False, **kwargs) -> LossOutput:
         outputs: LossOutput = self.loss_fn(lightning_module=self, batch=batch, validation=validation, **kwargs)
@@ -103,6 +97,12 @@ class SentEmb(L.LightningModule):
             return
         try:
             # MTEB evaluation
+            if self.args.add_prefix:
+                model_prompts = {
+                    PromptType.query.value: "query: ",
+                    PromptType.passage.value: "document: ",
+                }
+                self.student_model.prompts = model_prompts
             output_folder = self.args.output_dir / "mteb_eval"
             evaluation = mteb.MTEB(
                 tasks=self.on_eval_tasks,
@@ -137,6 +137,12 @@ class SentEmb(L.LightningModule):
         if not self.args.mteb_eval:
             return
         try:
+            if self.args.add_prefix:
+                model_prompts = {
+                    PromptType.query.value: "query: ",
+                    PromptType.passage.value: "document: ",
+                }
+                self.student_model.prompts = model_prompts
             # MTEB evaluation
             output_folder = self.args.output_dir / "mteb_eval"
             evaluation = mteb.MTEB(
