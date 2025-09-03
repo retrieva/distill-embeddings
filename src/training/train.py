@@ -9,6 +9,7 @@ from lightning.pytorch.loggers import WandbLogger
 from src.training.arguments import parse_args
 from src.training.data import DataModuleForDistill
 from src.training.model import KDForSentEmb
+from src.utils import get_code_name
 
 if __name__ == "__main__":
     args = parse_args()
@@ -17,14 +18,8 @@ if __name__ == "__main__":
     data_dir = (
         Path(args.data_dir) / f"{args.data_name}-{args.language}" / f"{args.teacher_model.replace('/', '_')}_encoded"
     )
-    use_pos = "_w-pos" if args.use_pos else ""
-    add_prefix = "_prefix" if args.add_prefix else ""
-    use_lora = "_lora" if args.use_lora else ""
-    distill_rate = f"{str(args.distill_weight)}" if args.distill_weight != 1.0 else ""
-    # GPU数を取得してグローバルバッチサイズを計算
-    num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
-    global_batch_size = args.batch_size * num_devices
-    code_name = f"{args.data_name}_e{args.num_epochs}_bs{global_batch_size}_{args.scheduler}{args.lr}_{args.loss_type}{distill_rate}{use_pos}{add_prefix}"
+    code_name = get_code_name(args)
+
     args.output_dir = (
         Path(args.output_dir)
         / args.student_model.replace("/", "_")
