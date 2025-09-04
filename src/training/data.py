@@ -8,8 +8,9 @@ import lightning as L
 import numpy as np
 import torch
 from datasets import load_from_disk
+from more_itertools import divide
 from torch.utils.data import DataLoader, Dataset
-from transformers import PreTrainedTokenizer
+from transformers import BatchEncoding, PreTrainedTokenizer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,12 +50,14 @@ PREFIX_MAP = {
 
 @dataclass
 class Batch:
-    input_ids: torch.Tensor
-    attention_mask: torch.Tensor
-    pos: dict[str, torch.Tensor]
+    anc: BatchEncoding
+    pos: BatchEncoding
     teacher_features: torch.Tensor
     pos_features: torch.Tensor
     subset: list[str]
+
+    def __len__(self):
+        return len(self.anc)
 
 
 class TaskBatchDataset(Dataset):
@@ -116,40 +119,22 @@ class TaskBatchDataset(Dataset):
         ]
 
 
-class DataCollatorForDistill:
-    def __init__(self, tokenizer: PreTrainedTokenizer, max_length: int = 4096):
-        self.tokenizer = tokenizer
-        self.max_length = max_length
+@dataclass
+class DataCollatorForContrastiveDistill:
+    tokenizer: PreTrainedTokenizer
+    max_length: int = 4096
+    disable_instruction: bool = False
+    add_prefix: bool = False
+    num_chunk: int = 4
 
     def preprocess(self, texts):
         return self.tokenizer(
             texts,
-            padding="max_length",
+            padding=True,
             truncation=True,
             max_length=self.max_length,
             return_tensors="pt",
         )
-
-    def __call__(self, samples):
-        # TaskBatchDataset + batch_size=1 の場合: samples = [ list[ sample_dict ] ]
-        if len(samples) == 1 and isinstance(samples[0], list):
-            samples = samples[0]
-
-        texts = [s["anc"] for s in samples]
-        teacher_features = [torch.Tensor(s["anc_features"]) for s in samples]
-        inputs = self.preprocess(texts)
-        return {
-            "input_ids": inputs["input_ids"],
-            "attention_mask": inputs["attention_mask"],
-            "teacher_features": teacher_features,
-        }
-
-
-class DataCollatorForContrastiveDistill(DataCollatorForDistill):
-    def __init__(self, tokenizer, max_length=4096, disable_instruction: bool = False, add_prefix: bool = False):
-        super().__init__(tokenizer, max_length)
-        self.disable_instruction = disable_instruction
-        self.add_prefix = add_prefix
 
     def __call__(self, samples):
         if len(samples) == 1 and isinstance(samples[0], list):
@@ -174,15 +159,13 @@ class DataCollatorForContrastiveDistill(DataCollatorForDistill):
         anc_features = [torch.Tensor(s["anc_features"]) for s in samples]
         pos_features = [torch.Tensor(s["pos_features"]) for s in samples]
 
-        anc_inputs = self.preprocess(anc_text)
-        pos_inputs = self.preprocess(pos_text)
-        return {
-            "input_ids": anc_inputs["input_ids"],
-            "attention_mask": anc_inputs["attention_mask"],
-            "pos": pos_inputs,
-            "teacher_features": anc_features,
-            "pos_features": pos_features,
-        }
+        return Batch(
+            anc=[self.preprocess(list(a)) for a in divide(self.num_chunk, anc_text)],
+            pos=[self.preprocess(list(p)) for p in divide(self.num_chunk, pos_text)],
+            teacher_features=anc_features,
+            pos_features=pos_features,
+            subset=subset,
+        )
 
 
 class DataModuleForDistill(L.LightningDataModule):
@@ -213,12 +196,10 @@ class DataModuleForDistill(L.LightningDataModule):
                 max_length=max_length,
                 disable_instruction=("gte" in str(self.data_dir)),
                 add_prefix=add_prefix,
+                num_chunk=4,
             )
         else:
-            self.collate_fn = DataCollatorForDistill(
-                tokenizer=self.tokenizer,
-                max_length=max_length,
-            )
+            raise ValueError(f"Unknown data type in {self.data_dir}")
         self.train_batches_ds: TaskBatchDataset | None = None
         self.val_batches_ds: TaskBatchDataset | None = None
 

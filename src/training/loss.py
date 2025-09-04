@@ -45,17 +45,24 @@ class InfoCSE(nn.Module):
         validation: bool = False,
         **kwargs,
     ) -> LossOutput:
-        local_features = lightning_module.student_model(batch)["sentence_embedding"]
+        # あとで全部これにする
+        local_features = torch.cat(
+            [lightning_module.student_model(anc)["sentence_embedding"] for anc in batch.anc], dim=0
+        )
         local_features = F.normalize(local_features, dim=-1)
         # (gpu_num, bs, dim)
         gathered_features = gather(lightning_module, local_features)
         # (gpu_num x bs, dim)
         global_features = gathered_features.view(-1, gathered_features.shape[-1])
-        if "pos" in batch.keys() and "pos_features" in batch.keys() and self.use_pos:
-            local_pos_features = lightning_module.student_model(batch["pos"])["sentence_embedding"]
+        if self.use_pos:
+            local_pos_features = torch.cat(
+                [lightning_module.student_model(pos)["sentence_embedding"] for pos in batch.pos], dim=0
+            )
         else:
             # unsupと同じように同じ文2回かける（dropoutでちょっと違う埋め込みになるはず）
-            local_pos_features = lightning_module.student_model(batch)["sentence_embedding"]
+            local_pos_features = torch.cat(
+                [lightning_module.student_model(anc)["sentence_embedding"] for anc in batch.anc], dim=0
+            )
         local_pos_features = F.normalize(local_pos_features, dim=-1)
         # 3. 全てのGPUから 'pos_features' を収集して結合
         gathered_pos_features_list = gather(lightning_module, local_pos_features)
@@ -101,9 +108,10 @@ class KDLoss(nn.Module):
         **kwargs,
     ) -> LossOutput:
         loss_dict = {}
-        local_student_features = lightning_module.student_model(batch)["sentence_embedding"]
-
-        local_teacher_features = batch["teacher_features"]
+        local_student_features = torch.cat(
+            [lightning_module.student_model(anc)["sentence_embedding"] for anc in batch.anc], dim=0
+        )
+        local_teacher_features = batch.teacher_features
         if isinstance(local_teacher_features, list):
             local_teacher_features = torch.stack(local_teacher_features, dim=0)
         local_teacher_features = local_teacher_features[:, : local_student_features.shape[1]]
@@ -116,8 +124,10 @@ class KDLoss(nn.Module):
         gathered_teacher_features = gather(lightning_module, local_teacher_features)
         global_teacher_features = gathered_teacher_features.view(-1, gathered_teacher_features.shape[-1])
         if self.use_pos:
-            local_pos_student_features = lightning_module.student_model(batch["pos"])["sentence_embedding"]
-            local_pos_teacher_features = batch["pos_features"]
+            local_pos_student_features = torch.cat(
+                [lightning_module.student_model(pos)["sentence_embedding"] for pos in batch.pos], dim=0
+            )
+            local_pos_teacher_features = batch.pos_features
             if isinstance(local_pos_teacher_features, list):
                 local_pos_teacher_features = torch.stack(local_pos_teacher_features, dim=0)
             local_pos_teacher_features = local_pos_teacher_features[:, : local_pos_student_features.shape[1]]
@@ -158,7 +168,9 @@ class KDLoss(nn.Module):
                     / self.cse_temp
                 )
             else:
-                local_pos_features = lightning_module.student_model(batch)["sentence_embedding"]
+                local_pos_features = torch.cat(
+                    [lightning_module.student_model(anc)["sentence_embedding"] for anc in batch.anc], dim=0
+                )
                 gathered_pos_features = gather(lightning_module, local_pos_features)
                 global_pos_features = gathered_pos_features.view(-1, gathered_pos_features.shape[-1])
                 scores = (
