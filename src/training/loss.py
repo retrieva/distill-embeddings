@@ -18,6 +18,20 @@ class LossOutput:
     loss_dict: dict[str, Tensor]
 
 
+def gather(lightning_module, tensor):
+    # world_size , bs, dim
+    batch_size: int = tensor.size(0)
+    pid: int = lightning_module.global_rank
+    print(f"pid: {pid}, batch_size: {batch_size}")
+    gathered_stacked = lightning_module.all_gather(tensor, sync_grads=True)
+    print(gathered_stacked.shape)
+    # world_size x bs, dim
+    gathered_concatenated = gathered_stacked.view(-1, *gathered_stacked.shape[2:])
+    print(gathered_concatenated.shape)
+    gathered_concatenated[batch_size * pid : batch_size * (pid + 1)] = tensor
+    return gathered_concatenated
+
+
 class InfoCSE(nn.Module):
     def __init__(self, args=None):
         super().__init__()
@@ -34,7 +48,7 @@ class InfoCSE(nn.Module):
         local_features = lightning_module.student_model(batch)["sentence_embedding"]
         local_features = F.normalize(local_features, dim=-1)
         # (gpu_num, bs, dim)
-        gathered_features = lightning_module.all_gather(local_features, sync_grads=True)
+        gathered_features = self.gather(lightning_module, local_features)
         # (gpu_num x bs, dim)
         global_features = gathered_features.view(-1, gathered_features.shape[-1])
         if "pos" in batch.keys() and "pos_features" in batch.keys() and self.use_pos:
@@ -44,7 +58,7 @@ class InfoCSE(nn.Module):
             local_pos_features = lightning_module.student_model(batch)["sentence_embedding"]
         local_pos_features = F.normalize(local_pos_features, dim=-1)
         # 3. 全てのGPUから 'pos_features' を収集して結合
-        gathered_pos_features_list = lightning_module.all_gather(local_pos_features, sync_grads=True)
+        gathered_pos_features_list = self.gather(lightning_module, local_pos_features)
         global_pos_features = gathered_pos_features_list.view(-1, gathered_pos_features_list.shape[-1])
 
         loss = self.loss_fn(features=global_features, pos_features=global_pos_features)
@@ -95,11 +109,11 @@ class KDLoss(nn.Module):
         local_teacher_features = local_teacher_features[:, : local_student_features.shape[1]]
         # 3. 全GPUから学生・教師の特徴量を集約
         # (gpu_num, bs, dim)
-        gathered_student_features = lightning_module.all_gather(local_student_features, sync_grads=True)
+        gathered_student_features = self.gather(lightning_module, local_student_features)
         # (gpu_num x bs, dim)
         global_student_features = gathered_student_features.view(-1, gathered_student_features.shape[-1])
 
-        gathered_teacher_features = lightning_module.all_gather(local_teacher_features, sync_grads=True)
+        gathered_teacher_features = self.gather(lightning_module, local_teacher_features)
         global_teacher_features = gathered_teacher_features.view(-1, gathered_teacher_features.shape[-1])
         if self.use_pos:
             local_pos_student_features = lightning_module.student_model(batch["pos"])["sentence_embedding"]
@@ -109,11 +123,11 @@ class KDLoss(nn.Module):
             local_pos_teacher_features = local_pos_teacher_features[:, : local_pos_student_features.shape[1]]
 
             # Positiveペアの特徴量も全GPUから集約
-            gathered_pos_student_features = lightning_module.all_gather(local_pos_student_features, sync_grads=True)
+            gathered_pos_student_features = self.gather(lightning_module, local_pos_student_features)
             global_pos_student_features = gathered_pos_student_features.view(
                 -1, gathered_pos_student_features.shape[-1]
             )
-            gathered_pos_teacher_features = lightning_module.all_gather(local_pos_teacher_features, sync_grads=True)
+            gathered_pos_teacher_features = self.gather(lightning_module, local_pos_teacher_features)
             global_pos_teacher_features = gathered_pos_teacher_features.view(
                 -1, gathered_pos_teacher_features.shape[-1]
             )
@@ -145,7 +159,7 @@ class KDLoss(nn.Module):
                 )
             else:
                 local_pos_features = lightning_module.student_model(batch)["sentence_embedding"]
-                gathered_pos_features = lightning_module.all_gather(local_pos_features, sync_grads=True)
+                gathered_pos_features = self.gather(lightning_module, local_pos_features)
                 global_pos_features = gathered_pos_features.view(-1, gathered_pos_features.shape[-1])
                 scores = (
                     einsum(
