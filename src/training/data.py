@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+# ここはあんまり自信ない…
 PREFIX_MAP = {
     "HotpotQA": ["query:", "document:"],
     "NQ": ["query:", "document:"],
@@ -24,6 +25,26 @@ PREFIX_MAP = {
     "en_NLI_data": ["query:", "query:"],
     "fever": ["query:", "document:"],
     "ms-marco": ["query:", "document:"],
+    "S2ORC_title_abstract": ["query:", "document:"],
+    "SimpleWiki": ["query:", "document:"],
+    "agnews": ["query:", "document:"],
+    "amazon-qa": ["query:", "document:"],
+    "amazon_review_2018": ["query:", "document:"],
+    "ccnews_title_text": ["query:", "document:"],
+    "cnn_dailymail": ["query:", "document:"],
+    "coco_captions": ["query:", "query:"],
+    "codesearchnet": ["query:", "query:"],
+    "eli5_question_answer": ["query:", "document:"],
+    "gooaq_pairs": ["query:", "document:"],
+    "npr": ["query:", "document:"],
+    "searchQA_top5_snippets": ["query:", "query:"],
+    "sentence-compression": ["query:", "query:"],
+    "stackexchange_duplicate_questions_body_body": ["query:", "query:"],
+    "stackexchange_duplicate_questions_title-body_title-body": ["query:", "query:"],
+    "stackexchange_duplicate_questions_title_title": ["query:", "query:"],
+    "wikihow": ["query:", "document:"],
+    "xsum": ["query:", "document:"],
+    "yahoo_answers_title_answer": ["query:", "document:"],
 }
 
 
