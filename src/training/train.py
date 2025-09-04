@@ -46,6 +46,15 @@ if __name__ == "__main__":
         dirpath=args.output_dir / "checkpoints", filename="{epoch:02d}", every_n_epochs=1, save_top_k=-1
     )
     lr_monitor = LearningRateMonitor(logging_interval="step")
+    deepspeed_config = {
+        "zero_optimization": {"stage": 2},
+        "train_micro_batch_size_per_gpu": args.batch_size,
+        "activation_checkpointing": {
+            "partition_activations": True,
+            "contiguous_memory_optimization": False,
+            "cpu_checkpointing": False,
+        },
+    }
     trainer = L.Trainer(
         devices="auto",
         max_epochs=args.num_epochs,
@@ -54,7 +63,7 @@ if __name__ == "__main__":
         precision="bf16-mixed",
         num_sanity_val_steps=0,
         callbacks=[modelcheckpoint, lr_monitor],
-        strategy=DeepSpeedStrategy(stage=2, allgather_bucket_size=5e8, reduce_bucket_size=5e8),
+        strategy=DeepSpeedStrategy(config=deepspeed_config),
         logger=WandbLogger(
             name=os.path.basename(args.output_dir),
             project="distillation",

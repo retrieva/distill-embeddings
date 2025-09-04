@@ -56,6 +56,8 @@ class SentEmb(L.LightningModule):
         ).bfloat16()
         if self.args.use_lora:
             self.student_model = self.add_lora_adapter(self.student_model)
+        self.student_model.config.use_cache = False
+        self.student_model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": True})
 
     def forward(self, batch: Batch, validation: bool = False, **kwargs) -> LossOutput:
         outputs: LossOutput = self.loss_fn(lightning_module=self, batch=batch, validation=validation, **kwargs)
