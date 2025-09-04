@@ -50,5 +50,6 @@ def get_code_name(args: Namespace | dict) -> str:
 
     num_devices = 1
     global_batch_size = args.batch_size * num_devices
-    code_name = f"{args.data_name}_e{args.num_epochs}_bs{global_batch_size}_{args.scheduler}{args.lr}_{args.loss_type}{distill_weight}{use_pos}{add_prefix}{use_lora}"
+    data_name = args.data_name if "data_name" in args else args.dataset_name
+    code_name = f"{data_name}_e{args.num_epochs}_bs{global_batch_size}_{args.scheduler}{args.lr}_{args.loss_type}{distill_weight}{use_pos}{add_prefix}{use_lora}"
     return code_name
