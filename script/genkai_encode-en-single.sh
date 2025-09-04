@@ -11,7 +11,7 @@ nvidia-smi
 
 uv sync
 
-uv run python -m src.preprocess.gte_en_plus_data.encode \
+uv run python -m src.preprdata_processingocess.gte_en_plus_data.encode \
     --teacher_model "Qwen/Qwen3-Embedding-4B" \
     --long_batch_size 2 \
     --short_batch_size 64 \
