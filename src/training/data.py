@@ -8,7 +8,7 @@ import lightning as L
 import numpy as np
 import torch
 from datasets import load_from_disk
-from torch.utils.data import DataLoader, Dataset, Sampler
+from torch.utils.data import DataLoader, Dataset
 from transformers import PreTrainedTokenizer
 
 logging.basicConfig(level=logging.INFO)
@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-# ここはあんまり自信ない…
 PREFIX_MAP = {
     "HotpotQA": ["query:", "document:"],
     "NQ": ["query:", "document:"],
@@ -58,65 +57,63 @@ class Batch:
     subset: list[str]
 
 
-class ShuffledTaskBatchSampler(Sampler[list[int]]):
-    """
-    バッチ内のタスクを統一しつつ、バッチの順序をタスク間でシャッフルするサンプラー
-    """
-
-    def __init__(self, task_indices: dict[str, list[int]], batch_size: int, shuffle: bool = True):
-        """
-        Args:
-            task_indices (dict): タスク名をキー、インデックスのリストを値とする辞書
-            batch_size (int): 各バッチのサイズ
-            shuffle (bool): エポックごとにデータをシャッフルするかどうか
-        """
-        self.task_indices = task_indices
+class TaskBatchDataset(Dataset):
+    def __init__(
+        self,
+        hf_dataset,
+        embeddings: np.ndarray,
+        batch_size: int,
+        drop_last=False,
+        shuffle_within_task=True,
+        shuffle_task_batches=True,
+        seed=42,
+    ):
+        self.hf_dataset = hf_dataset
+        self.embeddings = embeddings
         self.batch_size = batch_size
-        self.shuffle = shuffle
+        self.drop_last = drop_last
+        self.shuffle_within_task = shuffle_within_task
+        self.shuffle_task_batches = shuffle_task_batches
+        self.seed = seed
+        self._batches = []
+        self.rebuild_batches(0)
 
-        self.all_batches = self._generate_all_batches()
+    def _group_indices_by_task(self):
+        task_indices = defaultdict(list)
+        for i in range(len(self.hf_dataset)):
+            task_indices[self.hf_dataset[i]["subset"]].append(i)
+        return task_indices
 
-    def _generate_all_batches(self) -> list[list[int]]:
-        """全タスクの全バッチを生成する"""
-        all_batches = []
-        for task_name in self.task_indices:
-            indices = self.task_indices[task_name][:]  # コピーを作成
-            if self.shuffle:
-                # タスク内のデータ順をシャッフル
-                random.shuffle(indices)
-
-            # バッチサイズごとに区切っていく
-            for i in range(0, len(indices), self.batch_size):
-                all_batches.append(indices[i : i + self.batch_size])
-        return all_batches
-
-    def __iter__(self):
-        if self.shuffle:
-            random.shuffle(self.all_batches)
-        yield from self.all_batches
-
-    def __len__(self) -> int:
-        return len(self.all_batches)
-
-
-class DistilDataset(Dataset):
-    def __init__(self, dataset: Dataset, embedding: np.ndarray):
-        super().__init__()
-        self.dataset = dataset
-        self.embedding = embedding
+    def rebuild_batches(self, epoch: int):
+        rng = random.Random(self.seed + epoch)
+        grouped = self._group_indices_by_task()
+        batches = []
+        for _, idxs in grouped.items():
+            if self.shuffle_within_task:
+                rng.shuffle(idxs)
+            for j in range(0, len(idxs), self.batch_size):
+                chunk = idxs[j : j + self.batch_size]
+                if len(chunk) < self.batch_size and self.drop_last:
+                    continue
+                batches.append(chunk)
+        if self.shuffle_task_batches:
+            rng.shuffle(batches)
+        self._batches = batches
 
     def __len__(self):
-        return len(self.dataset)
+        return len(self._batches)
 
-    def __getitem__(self, idx):
-        # mmap_mode='r'で読むと書き込み不可になるため、警告も出るし一応コピーしとく
-        return {
-            "anc": self.dataset[idx]["anc"],
-            "anc_features": self.embedding[self.dataset[idx]["anc_emb_idx"]].copy(),
-            "pos": self.dataset[idx]["pos"],
-            "pos_features": self.embedding[self.dataset[idx]["pos_emb_idx"]].copy(),
-            "subset": self.dataset[idx]["subset"],
-        }
+    def __getitem__(self, bidx):
+        return [
+            {
+                "anc": self.hf_dataset[i]["anc"],
+                "anc_features": self.embeddings[self.hf_dataset[i]["anc_emb_idx"]],
+                "pos": self.hf_dataset[i]["pos"],
+                "pos_features": self.embeddings[self.hf_dataset[i]["pos_emb_idx"]],
+                "subset": self.hf_dataset[i]["subset"],
+            }
+            for i in self._batches[bidx]
+        ]
 
 
 class DataCollatorForDistill:
@@ -134,10 +131,13 @@ class DataCollatorForDistill:
         )
 
     def __call__(self, samples):
+        # TaskBatchDataset + batch_size=1 の場合: samples = [ list[ sample_dict ] ]
+        if len(samples) == 1 and isinstance(samples[0], list):
+            samples = samples[0]
+
         texts = [s["anc"] for s in samples]
         teacher_features = [torch.Tensor(s["anc_features"]) for s in samples]
         inputs = self.preprocess(texts)
-
         return {
             "input_ids": inputs["input_ids"],
             "attention_mask": inputs["attention_mask"],
@@ -152,17 +152,28 @@ class DataCollatorForContrastiveDistill(DataCollatorForDistill):
         self.add_prefix = add_prefix
 
     def __call__(self, samples):
+        if len(samples) == 1 and isinstance(samples[0], list):
+            samples = samples[0]
+
         anc_text = [s["anc"] for s in samples]
         pos_text = [s["pos"] for s in samples]
+
         if self.disable_instruction:
-            anc_text = [text.split("Query:")[1].strip() for text in anc_text]
+            anc_text = [t.split("Query:", 1)[1].strip() if "Query:" in t else t for t in anc_text]
+
         if self.add_prefix:
+            new_anc, new_pos = [], []
             for s in samples:
                 subset = s["subset"]
-                anc_text = [f"{PREFIX_MAP[subset][0]} {text}" for text in anc_text]
-                pos_text = [f"{PREFIX_MAP[subset][1]} {text}" for text in pos_text]
+                p_query, p_doc = PREFIX_MAP.get(subset, ("query:", "document:"))
+                new_anc.append(f"{p_query} {s['anc']}")
+                new_pos.append(f"{p_doc} {s['pos']}")
+            anc_text = new_anc
+            pos_text = new_pos
+
         anc_features = [torch.Tensor(s["anc_features"]) for s in samples]
         pos_features = [torch.Tensor(s["pos_features"]) for s in samples]
+
         anc_inputs = self.preprocess(anc_text)
         pos_inputs = self.preprocess(pos_text)
         return {
@@ -185,6 +196,7 @@ class DataModuleForDistill(L.LightningDataModule):
         eval_batch_size: int | None = None,
         max_length: int = 4096,
         add_prefix: bool = False,
+        seed: int = 42,
     ):
         super().__init__()
         self.data_dir = data_dir
@@ -193,13 +205,13 @@ class DataModuleForDistill(L.LightningDataModule):
         self.eval_batch_size = eval_batch_size if eval_batch_size else batch_size
         self.num_workers = num_workers
         self.tokenizer = student_tokenizer
+        self.seed = seed
 
-        # TODO: ここのハードコード気持ち悪いかも！！
-        if "triplet" or "gte" in str(self.data_dir):
+        if ("triplet" in str(self.data_dir)) or ("gte" in str(self.data_dir)):
             self.collate_fn = DataCollatorForContrastiveDistill(
                 tokenizer=self.tokenizer,
                 max_length=max_length,
-                disable_instruction=True if "gte" in str(self.data_dir) else False,
+                disable_instruction=("gte" in str(self.data_dir)),
                 add_prefix=add_prefix,
             )
         else:
@@ -207,75 +219,80 @@ class DataModuleForDistill(L.LightningDataModule):
                 tokenizer=self.tokenizer,
                 max_length=max_length,
             )
-        self.datasets = {}
+        self.train_batches_ds: TaskBatchDataset | None = None
+        self.val_batches_ds: TaskBatchDataset | None = None
 
     def load_data_and_emb(self, data_path):
         datasets = load_from_disk(data_path)
         embeddings = np.load(os.path.join(data_path, "emb.npy"), mmap_mode="r")
         return datasets, embeddings
 
+    def prepare_data(self):
+        data_path = os.path.join(self.data_dir, self.data_num)
+        if not os.path.exists(data_path):
+            exist_data_dir_list = os.listdir(self.data_dir)
+            exist_nums = [int(d) for d in exist_data_dir_list if d.isdigit()]
+            if not exist_nums:
+                raise ValueError(f"No fallback data dirs in {self.data_dir}")
+
     def setup(self, stage: str):
         data_path = os.path.join(self.data_dir, self.data_num)
         if os.path.exists(data_path):
             datasets, embeddings = self.load_data_and_emb(data_path)
         else:
-            exist_data_dir_list = os.listdir(self.data_dir)
-            exist_data_num_list = []
-            for num in exist_data_dir_list:
-                try:
-                    exist_data_num_list.append(int(num))
-                except ValueError:
-                    continue
-            max_data_num = max(exist_data_num_list) if exist_data_num_list else 0
+            exist_nums = [int(d) for d in os.listdir(self.data_dir) if d.isdigit()]
+            max_data_num = max(exist_nums) if exist_nums else 0
             if int(self.data_num) < max_data_num:
                 datasets, embeddings = self.load_data_and_emb(os.path.join(self.data_dir, str(max_data_num)))
                 datasets = datasets.shuffle(seed=42).select(range(int(self.data_num)))
             else:
                 raise ValueError(f"Data path {data_path} does not exist.")
+
         datasets = datasets.train_test_split(test_size=int(min(len(datasets) * 0.1, 1000)), seed=42, shuffle=True)
         logger.info(f"Total samples: {len(datasets)}, embeddings: {embeddings.shape}")
-        self.datasets["train"] = DistilDataset(datasets["train"], embeddings)
-        self.datasets["test"] = DistilDataset(datasets["test"], embeddings)
 
-    def _get_task_indices(self, dataset: Dataset) -> dict[str, list[int]]:
-        """
-        データセットをスキャンし、タスク名ごとのインデックスリストを作成する。
+        # 初回バッチ構築
+        self.train_batches_ds = TaskBatchDataset(
+            datasets["train"],
+            embeddings,
+            batch_size=self.batch_size,
+            drop_last=False,
+            shuffle_within_task=True,
+            shuffle_task_batches=True,
+            seed=self.seed,
+        )
+        # 評価は順序固定 (タスク内シャッフル無し / タスクバッチ順序固定)
+        self.val_batches_ds = TaskBatchDataset(
+            datasets["test"],
+            embeddings,
+            batch_size=self.eval_batch_size,
+            drop_last=False,
+            shuffle_within_task=False,
+            shuffle_task_batches=False,
+            seed=self.seed,
+        )
 
-        Args:
-            dataset (Dataset): `subset`属性にタスク名のリストを持つデータセット。
-
-        Returns:
-            dict[str, list[int]]: タスク名をキー、インデックスのリストを値とする辞書。
-                                    (例: {'task_a': [0, 2, 5], 'task_b': [1, 3, 4]})
-        """
-        task_indices = defaultdict(list)
-        for idx, task_name in enumerate(dataset.dataset["subset"]):
-            task_indices[task_name].append(idx)
-
-        return dict(task_indices)
+    def rebuild_train_batches_for_epoch(self, epoch: int):
+        if self.train_batches_ds is not None:
+            self.train_batches_ds.rebuild_batches(epoch)
 
     def train_dataloader(self):
+        # batch_size=1: 1 “要素” が既に 1 ミニバッチ
         return DataLoader(
-            self.datasets["train"],
+            self.train_batches_ds,
+            batch_size=1,
+            shuffle=False,  # Lightning が DistributedSampler を差し込む
             num_workers=self.num_workers,
-            batch_sampler=ShuffledTaskBatchSampler(
-                task_indices=self._get_task_indices(self.datasets["train"]),
-                batch_size=self.batch_size,
-                shuffle=True,
-            ),
             collate_fn=self.collate_fn,
             pin_memory=True,
         )
 
     def val_dataloader(self):
         return DataLoader(
-            self.datasets["test"],
+            self.val_batches_ds,
+            batch_size=1,
+            shuffle=False,
             num_workers=self.num_workers,
-            batch_sampler=ShuffledTaskBatchSampler(
-                task_indices=self._get_task_indices(self.datasets["test"]),
-                batch_size=self.eval_batch_size,
-                shuffle=False,
-            ),
             collate_fn=self.collate_fn,
             pin_memory=True,
         )
