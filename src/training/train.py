@@ -14,6 +14,9 @@ from src.utils import get_code_name
 
 if __name__ == "__main__":
     args = parse_args()
+    world_size = int(os.environ.get("WORLD_SIZE", 1))
+    args.world_size = world_size
+    args.global_batch_size = args.batch_size * args.world_size
     L.seed_everything(42, workers=True)
     torch.set_float32_matmul_precision("high")
     data_dir = (
