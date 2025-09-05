@@ -38,6 +38,7 @@ def parse_args():
         "--warmup_ratio", type=float, default=0.05, help="warmup ratio for learning rate scheduler"
     )
     training_args.add_argument("--use_lora", type=bool, default=False, help="use LoRA for training")
+    training_args.add_argument("--gradient_checkpointing", type=bool, default=False, help="use gradient checkpointing")
 
     # --- Loss & Distillation Arguments ---
     loss_args = parser.add_argument_group("Loss & Distillation Arguments")
