@@ -14,7 +14,9 @@ from src.utils import get_code_name
 
 if __name__ == "__main__":
     args = parse_args()
-    world_size = int(os.environ.get("WORLD_SIZE", 1))
+    world_size = 1
+    if torch.cuda.is_available():
+        world_size = torch.cuda.device_count()
     args.world_size = world_size
     args.global_batch_size = args.batch_size * args.world_size
     L.seed_everything(42, workers=True)
