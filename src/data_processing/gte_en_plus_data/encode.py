@@ -210,7 +210,9 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Load and print samples from a dataset.")
-    parser.add_argument("--output_dir", type=str, default="data/gte_plus", help="Path to save the output directory")
+    parser.add_argument(
+        "--output_dir", type=str, default="data/gte_plus-eng", help="Path to save the output directory"
+    )
     parser.add_argument(
         "--teacher_model",
         type=str,
