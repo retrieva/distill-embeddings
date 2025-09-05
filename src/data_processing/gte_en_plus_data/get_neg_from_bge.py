@@ -1,23 +1,125 @@
+import json
 import os
+from pathlib import Path
 
+import numpy as np
 import pandas as pd
-from datasets import load_from_disk
+from datasets import Dataset, load_from_disk
+from tqdm import tqdm
 
-base_dataset = load_from_disk("data/gte_plus-eng/gte/Qwen_Qwen3-Embedding-4B_encoded/794554")
+# ============== 設定 ==============
+BASE_DATASET_PATH = "data/gte_plus-eng/gte/Qwen_Qwen3-Embedding-4B_encoded/794554"
+RAW_DATA_DIR = "data/gte_plus-eng/gte/raw"
+OUTPUT_BASE_DIR = "data/gte_plus-eng/gte/with_neg_noencode/794554"  # 新しい出力先(必要なら変更)
+NEG_MAX_PER_PAIR = 7  # 1ペアあたりの最大 neg 数を制限したい場合は整数 (例: 50)
+
+os.makedirs(OUTPUT_BASE_DIR, exist_ok=True)
+
+# 既存データセット読込
+base_dataset = load_from_disk(BASE_DATASET_PATH)
+
+subsets: list[str] = sorted(set(base_dataset["subset"]))
+print(f"[INFO] 対象 subset 数: {len(subsets)}")
 
 
-subsets = list(set(base_dataset["subset"]))
+def ensure_list(x):
+    if isinstance(x, list):
+        return x
+    if x is None or (isinstance(x, float) and np.isnan(x)):
+        return []
+    s = str(x).strip()
+    if not s:
+        return []
+    if s.startswith("[") and s.endswith("]"):
+        try:
+            return json.loads(s)
+        except Exception:
+            pass
+    if "," in s:
+        return [t.strip() for t in s.split(",") if t.strip()]
+    return [s]
 
-raw_data_dir = "data/gte_plus-eng/gte/raw"
-for subset in subsets:
-    origin_data = []
-    for path in os.listdir(f"{raw_data_dir}/{subset}"):
-        if path.endswith(".jsonl"):
-            origin_data.append(pd.read_json(f"{raw_data_dir}/{subset}/{path}", lines=True, dtype=str))
-    # query:str, pos:list[str], neg:list[str]
-    origin_data = pd.concat(origin_data, ignore_index=True)
-    # query:str, pos:str, subset:str, id:int,anc_emb_idx:int,pos_emb_idx:int
-    subset_data = base_dataset.filter(lambda example, subset=subset: example["subset"] == subset)
 
-    # subset:str, id:int, query:str, pos:str, neg:list[str], anc_emb_idx:int,pos_emb_idx:int, neg_emb_idx:list[int]
-    final_data = None
+query_col = "query" if "query" in base_dataset.column_names else "anc"
+
+subset_output_dir = Path(OUTPUT_BASE_DIR) / "subsets"
+subset_output_dir.mkdir(parents=True, exist_ok=True)
+
+summary_rows = []
+
+for subset in tqdm(subsets, desc="Process subsets"):
+    raw_dir = Path(RAW_DATA_DIR) / subset
+    if not raw_dir.exists():
+        print(f"[WARN] raw ディレクトリ無し: {raw_dir} -> skip")
+        continue
+
+    origin_parts = []
+    for fn in os.listdir(raw_dir):
+        if fn.endswith(".jsonl"):
+            origin_parts.append(pd.read_json(raw_dir / fn, lines=True, dtype=str))
+    if not origin_parts:
+        print(f"[WARN] origin_data 無し subset={subset}")
+        continue
+
+    origin_df = pd.concat(origin_parts, ignore_index=True)
+    if "pos" not in origin_df.columns or "neg" not in origin_df.columns:
+        print(f"[WARN] 必須列不足 subset={subset}")
+        continue
+
+    origin_df["pos"] = origin_df["pos"].map(ensure_list)
+    origin_df["neg"] = origin_df["neg"].map(ensure_list)
+
+    # query ごとに集約
+    origin_group = {}
+    for _, row in origin_df.iterrows():
+        origin_group.setdefault(row["query"], []).append(row)
+
+    subset_dataset = base_dataset.filter(lambda ex, s=subset: ex["subset"] == s)
+    if len(subset_dataset) == 0:
+        continue
+    subset_df = subset_dataset.to_pandas()
+
+    collected_neg_lists = []
+    all_neg_for_subset = set()
+
+    for _, r in subset_df.iterrows():
+        q = r[query_col]
+        p = r["pos"]
+        neg_set = set()
+        for cand in origin_group.get(q, []):
+            if p in cand["pos"]:
+                for n in cand["neg"]:
+                    if n and n not in (q, p):
+                        neg_set.add(n)
+        if NEG_MAX_PER_PAIR is not None and len(neg_set) > NEG_MAX_PER_PAIR:
+            neg_list = sorted(neg_set)[:NEG_MAX_PER_PAIR]
+        else:
+            neg_list = sorted(neg_set)
+        collected_neg_lists.append(neg_list)
+        all_neg_for_subset.update(neg_list)
+
+    out_df = subset_df.copy()
+    out_df["neg"] = collected_neg_lists
+
+    final_dataset = Dataset.from_pandas(out_df, preserve_index=False)
+    out_dir = subset_output_dir / subset
+    out_dir.mkdir(parents=True, exist_ok=True)
+    final_dataset.save_to_disk(out_dir)
+
+    summary_rows.append({
+        "subset": subset,
+        "rows": len(final_dataset),
+        "unique_neg_in_subset": len(all_neg_for_subset),
+        "pairs_with_neg": sum(1 for lst in collected_neg_lists if lst),
+    })
+    print(f"[FINAL] subset={subset} rows={len(final_dataset)} unique_neg={len(all_neg_for_subset)} saved={out_dir}")
+
+# 集計サマリ
+summary = {
+    "total_subsets_processed": len(summary_rows),
+    "details": summary_rows,
+}
+with open(Path(OUTPUT_BASE_DIR) / "neg_extraction_summary.json", "w", encoding="utf-8") as f:
+    json.dump(summary, f, ensure_ascii=False, indent=2)
+
+print("[DONE] neg 抽出のみ完了")
