@@ -16,6 +16,7 @@ dependencies = [
     "isoscore>=2.0.1",
     "lightning>=2.5.2",
     "matplotlib>=3.10.5",
+    "more-itertools>=10.8.0",
     "mteb>=1.38.33",
     "numpy<2.0.0",
     "peft>=0.17.1",

@@ -39,17 +39,31 @@ def get_code_name(args: Namespace | dict) -> str:
         args = Namespace(**args)
     use_pos, add_prefix, use_lora, distill_weight = "", "", "", ""
     try:
-        use_pos = "_w-pos" if args.use_pos else ""
-        add_prefix = "_prefix" if args.add_prefix else ""
-        distill_weight = f"{str(args.distill_weight)}" if args.distill_weight != 1.0 else ""
-        use_lora = "_lora" if args.use_lora else ""
+        use_pos = "_w-pos" if getattr(args, "use_pos", False) else ""
+        add_prefix = "_prefix" if getattr(args, "add_prefix", False) else ""
+        distill_weight = f"{str(args.distill_weight)}" if getattr(args, "distill_weight", 1.0) != 1.0 else ""
+        use_lora = "_lora" if getattr(args, "use_lora", False) else ""
     except AttributeError:
         pass
-    # GPU数を取得してグローバルバッチサイズを計算
-    # num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
+    if hasattr(args, "global_batch_size"):
+        global_batch_size = args.global_batch_size
+    else:
+        import os
 
-    num_devices = 1
-    global_batch_size = args.batch_size * num_devices
-    data_name = args.data_name if "data_name" in args else args.dataset_name
-    code_name = f"{data_name}_e{args.num_epochs}_bs{global_batch_size}_{args.scheduler}{args.lr}_{args.loss_type}{distill_weight}{use_pos}{add_prefix}{use_lora}"
+        try:
+            world_size = getattr(
+                args,
+                "world_size",
+                int(os.environ.get("WORLD_SIZE", torch.cuda.device_count() if torch.cuda.is_available() else 1)),
+            )
+        except Exception:
+            world_size = 1
+        global_batch_size = args.batch_size * world_size
+        # 評価時再現のため設定へ反映（任意）
+        args.global_batch_size = global_batch_size
+    data_name = args.data_name if "data_name" in args.__dict__ else args.dataset_name
+    code_name = (
+        f"{data_name}_e{args.num_epochs}_bs{global_batch_size}_"
+        f"{args.scheduler}{args.lr}_{args.loss_type}{distill_weight}{use_pos}{add_prefix}{use_lora}"
+    )
     return code_name

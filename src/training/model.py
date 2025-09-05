@@ -56,13 +56,18 @@ class SentEmb(L.LightningModule):
         ).bfloat16()
         if self.args.use_lora:
             self.student_model = self.add_lora_adapter(self.student_model)
+        if self.args.gradient_checkpointing:
+            self.student_model[0].auto_model.config.use_cache = False
+            self.student_model[0].auto_model.gradient_checkpointing_enable(
+                gradient_checkpointing_kwargs={"use_reentrant": True}
+            )
 
     def forward(self, batch: Batch, validation: bool = False, **kwargs) -> LossOutput:
         outputs: LossOutput = self.loss_fn(lightning_module=self, batch=batch, validation=validation, **kwargs)
         return outputs
 
     def get_batch_size(self, batch: Batch) -> int:
-        return batch["input_ids"].size(0)
+        return len(batch)
 
     def training_step(self, batch: Batch, batch_idx) -> Tensor:
         batch_size = self.get_batch_size(batch)
