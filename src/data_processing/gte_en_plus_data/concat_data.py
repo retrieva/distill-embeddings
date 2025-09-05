@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 from datasets import concatenate_datasets, load_from_disk
 
-base_dir = Path("data/gte_plus")
+base_dir = Path("data/gte_plus-eng")
 triplet_data = load_from_disk(base_dir / "triplet/Qwen_Qwen3-Embedding-4B_encoded/1000000")
 base_gte_data = load_from_disk(base_dir / "gte/Qwen_Qwen3-Embedding-4B_encoded/794554")
 
