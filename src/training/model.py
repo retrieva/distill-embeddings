@@ -208,8 +208,10 @@ class SentEmb(L.LightningModule):
         self.logger.experiment.summary.update(score_dict)
 
     def on_train_end(self) -> None:
-        self._on_train_end_mteb()
+        if not self.trainer.is_global_zero:
+            return
         self.get_id_iso_score()
+        self._on_train_end_mteb()
 
     def on_save_checkpoint(self, checkpoint):
         checkpoint["student_model_name"] = self.args.student_model
