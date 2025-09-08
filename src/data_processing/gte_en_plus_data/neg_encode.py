@@ -150,7 +150,7 @@ def main():
             neg_id_col.append([text_to_id[n] for n in negs])
         else:
             neg_id_col.append([])
-    full_dataset = full_dataset.add_column("neg_id", neg_id_col)
+    full_dataset = full_dataset.add_column("neg_emb_idx", neg_id_col)
 
     # 保存
     full_dataset.save_to_disk(output_path.as_posix())
