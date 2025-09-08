@@ -32,9 +32,15 @@ def load_fever():
 def build_mappings(dataset, queries, corpus):
     query_id_to_text: dict[str, str] = {r["_id"]: r["text"] for r in queries}
     corpus_id_to_text: dict[str, str] = {r["_id"]: (r["title"] + " " + r["text"]).strip() for r in corpus}
+    valid_query_ids = set(query_id_to_text.keys())
+    valid_corpus_ids = set(corpus_id_to_text.keys())
 
+    # 2. 有効なIDペアを持つ行だけを残すようにフィルタリング
+    filtered_dataset = dataset.filter(
+        lambda example: example["query-id"] in valid_query_ids and example["corpus-id"] in valid_corpus_ids, num_proc=4
+    )
     qid_to_pos_ids: dict[str, set[str]] = defaultdict(set)
-    for row in dataset:
+    for row in filtered_dataset:
         qid_to_pos_ids[row["query-id"]].add(row["corpus-id"])
 
     target_query_ids = [qid for qid in qid_to_pos_ids if qid in query_id_to_text]
@@ -105,6 +111,7 @@ def mine_hard_negatives(
     for row_idx, qid in enumerate(target_query_ids):
         q_text = query_id_to_text[qid]
         pos_ids = qid_to_pos_ids[qid]
+
         pos_texts = [corpus_id_to_text[cid] for cid in sorted(pos_ids)]
 
         union_pos_ids = query_text_to_union_pos_ids[q_text]
@@ -220,14 +227,8 @@ def main():
         target_query_ids,
         query_text_to_union_pos_ids,
     ) = build_mappings(dataset, queries, corpus)
-    valid_query_ids = set(query_id_to_text.keys())
-    valid_corpus_ids = set(corpus_id_to_text.keys())
-
-    # 2. 有効なIDペアを持つ行だけを残すようにフィルタリング
-    filtered_dataset = dataset.filter(
-        lambda example: example["query-id"] in valid_query_ids and example["corpus-id"] in valid_corpus_ids, num_proc=4
-    )
-
+    print(f"#total query ids (with positives): {len(target_query_ids)}")
+    print(f"#total corpus docs: {len(corpus_id_to_text)}")
     if args.corpus_sample > 0 or args.query_sample > 0:
         (
             corpus_id_to_text,
@@ -245,7 +246,6 @@ def main():
         )
 
     print(f"#query ids (with positives): {len(target_query_ids)}")
-    print(f"#unique query texts: {len(set(query_id_to_text[qid] for qid in target_query_ids))}")
     print(f"#corpus docs: {len(corpus_id_to_text)}")
 
     if not target_query_ids:
