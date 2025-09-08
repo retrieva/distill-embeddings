@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 import torch
+import torch.distributed as dist
 import torch.nn.functional as F
 from einops import einsum
 from lightning import LightningModule
@@ -18,16 +19,19 @@ class LossOutput:
     loss_dict: dict[str, Tensor]
 
 
-def gather(lightning_module, tensor):
+def _is_dist():
+    return dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1
+
+
+def gather(lightning_module: LightningModule, tensor: torch.Tensor, sync_grads: bool = True) -> torch.Tensor:
+    if not _is_dist():
+        return tensor
     # world_size , bs, dim
     batch_size: int = tensor.size(0)
     pid: int = lightning_module.global_rank
-    print(f"pid: {pid}, batch_size: {batch_size}")
-    gathered_stacked = lightning_module.all_gather(tensor, sync_grads=True)
-    print(gathered_stacked.shape)
+    gathered_stacked = lightning_module.all_gather(tensor, sync_grads=sync_grads)
     # world_size x bs, dim
-    gathered_concatenated = gathered_stacked.view(-1, *gathered_stacked.shape[2:])
-    print(gathered_concatenated.shape)
+    gathered_concatenated = gathered_stacked.reshape(-1, *gathered_stacked.shape[2:])
     gathered_concatenated[batch_size * pid : batch_size * (pid + 1)] = tensor
     return gathered_concatenated
 
@@ -50,10 +54,7 @@ class InfoCSE(nn.Module):
             [lightning_module.student_model(anc)["sentence_embedding"] for anc in batch.anc], dim=0
         )
         local_features = F.normalize(local_features, dim=-1)
-        # (gpu_num, bs, dim)
-        gathered_features = gather(lightning_module, local_features)
-        # (gpu_num x bs, dim)
-        global_features = gathered_features.view(-1, gathered_features.shape[-1])
+        global_features = gather(lightning_module, local_features)
         if self.use_pos:
             local_pos_features = torch.cat(
                 [lightning_module.student_model(pos)["sentence_embedding"] for pos in batch.pos], dim=0
@@ -65,9 +66,7 @@ class InfoCSE(nn.Module):
             )
         local_pos_features = F.normalize(local_pos_features, dim=-1)
         # 3. 全てのGPUから 'pos_features' を収集して結合
-        gathered_pos_features_list = gather(lightning_module, local_pos_features)
-        global_pos_features = gathered_pos_features_list.view(-1, gathered_pos_features_list.shape[-1])
-
+        global_pos_features = gather(lightning_module, local_pos_features)
         loss = self.loss_fn(features=global_features, pos_features=global_pos_features)
         return loss
 
@@ -92,10 +91,16 @@ class InfoCSE(nn.Module):
 
 class KDLoss(nn.Module):
     def __init__(
-        self, use_pos, distil_loss_fn: DistilLoss | None = None, distill_weight: float = 1.0, cse_temp: float = 0.05
+        self,
+        use_pos,
+        distil_loss_fn: DistilLoss | None = None,
+        distill_weight: float = 1.0,
+        cse_temp: float = 0.05,
+        use_neg: bool = False,
     ):
         super().__init__()
         self.use_pos = use_pos
+        self.use_neg = use_neg
         self.distil_loss_fn = distil_loss_fn
         self.distill_weight = distill_weight
         self.cse_temp = cse_temp
@@ -108,21 +113,19 @@ class KDLoss(nn.Module):
         **kwargs,
     ) -> LossOutput:
         loss_dict = {}
+
         local_student_features = torch.cat(
             [lightning_module.student_model(anc)["sentence_embedding"] for anc in batch.anc], dim=0
         )
         local_teacher_features = batch.teacher_features
         if isinstance(local_teacher_features, list):
             local_teacher_features = torch.stack(local_teacher_features, dim=0)
+        # studentと次元数を揃える（マトリョーシカ埋め込みを想定）
         local_teacher_features = local_teacher_features[:, : local_student_features.shape[1]]
-        # 3. 全GPUから学生・教師の特徴量を集約
-        # (gpu_num, bs, dim)
-        gathered_student_features = gather(lightning_module, local_student_features)
-        # (gpu_num x bs, dim)
-        global_student_features = gathered_student_features.view(-1, gathered_student_features.shape[-1])
 
-        gathered_teacher_features = gather(lightning_module, local_teacher_features)
-        global_teacher_features = gathered_teacher_features.view(-1, gathered_teacher_features.shape[-1])
+        # 全GPUから学生・教師の特徴量を集約
+        global_student_features = gather(lightning_module, local_student_features)
+        global_teacher_features = gather(lightning_module, local_teacher_features)
         if self.use_pos:
             local_pos_student_features = torch.cat(
                 [lightning_module.student_model(pos)["sentence_embedding"] for pos in batch.pos], dim=0
@@ -133,14 +136,8 @@ class KDLoss(nn.Module):
             local_pos_teacher_features = local_pos_teacher_features[:, : local_pos_student_features.shape[1]]
 
             # Positiveペアの特徴量も全GPUから集約
-            gathered_pos_student_features = gather(lightning_module, local_pos_student_features)
-            global_pos_student_features = gathered_pos_student_features.view(
-                -1, gathered_pos_student_features.shape[-1]
-            )
-            gathered_pos_teacher_features = gather(lightning_module, local_pos_teacher_features)
-            global_pos_teacher_features = gathered_pos_teacher_features.view(
-                -1, gathered_pos_teacher_features.shape[-1]
-            )
+            global_pos_student_features = gather(lightning_module, local_pos_student_features)
+            global_pos_teacher_features = gather(lightning_module, local_pos_teacher_features)
         else:
             global_pos_student_features = None
             global_pos_teacher_features = None
@@ -171,8 +168,7 @@ class KDLoss(nn.Module):
                 local_pos_features = torch.cat(
                     [lightning_module.student_model(anc)["sentence_embedding"] for anc in batch.anc], dim=0
                 )
-                gathered_pos_features = gather(lightning_module, local_pos_features)
-                global_pos_features = gathered_pos_features.view(-1, gathered_pos_features.shape[-1])
+                global_pos_features = gather(lightning_module, local_pos_features)
                 scores = (
                     einsum(
                         F.normalize(global_student_features, dim=-1),
