@@ -6,7 +6,7 @@ import skdim
 import torch
 import yaml
 from datasets import load_from_disk
-from IsoScore import IsoScore
+from IsoScore.IsoScore import IsoScore
 from mteb.encoder_interface import PromptType
 from peft import LoraConfig
 from sentence_transformers import SentenceTransformer

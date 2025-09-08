@@ -8,7 +8,7 @@ from argparse import ArgumentParser
 import pandas as pd
 import skdim
 from datasets import load_from_disk
-from IsoScore import IsoScore
+from IsoScore.IsoScore import IsoScore
 
 from src.utils import PROMPT_MAP, load_model
 
@@ -21,7 +21,7 @@ wiki = load_from_disk("data/anly-wiki/en")
 texts = wiki["text"]
 print("text len:", len(texts))
 model = load_model(model_name=args.model_name, return_output_folder=False)
-model.eval()
+model.eval().to("cpu")
 result = []
 for prompt_name, prompt in PROMPT_MAP.items():
     embeddings = model.encode(
