@@ -220,6 +220,13 @@ def main():
         target_query_ids,
         query_text_to_union_pos_ids,
     ) = build_mappings(dataset, queries, corpus)
+    valid_query_ids = set(query_id_to_text.keys())
+    valid_corpus_ids = set(corpus_id_to_text.keys())
+
+    # 2. 有効なIDペアを持つ行だけを残すようにフィルタリング
+    filtered_dataset = dataset.filter(
+        lambda example: example["query-id"] in valid_query_ids and example["corpus-id"] in valid_corpus_ids, num_proc=4
+    )
 
     if args.corpus_sample > 0 or args.query_sample > 0:
         (

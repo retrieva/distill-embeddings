@@ -20,24 +20,24 @@ base_dataset = load_from_disk(BASE_DATASET_PATH)
 
 subsets: list[str] = sorted(set(base_dataset["subset"]))
 print(f"[INFO] 対象 subset 数: {len(subsets)}")
+import ast
 
 
 def ensure_list(x):
     if isinstance(x, list):
         return x
+
     if x is None or (isinstance(x, float) and np.isnan(x)):
         return []
     s = str(x).strip()
     if not s:
         return []
-    if s.startswith("[") and s.endswith("]"):
-        try:
-            return json.loads(s)
-        except Exception:
-            pass
-    if "," in s:
-        return [t.strip() for t in s.split(",") if t.strip()]
-    return [s]
+    try:
+        return ast.literal_eval(x)
+    except Exception:
+        import pdb
+
+        pdb.set_trace()
 
 
 query_col = "query" if "query" in base_dataset.column_names else "anc"
@@ -72,7 +72,7 @@ for subset in tqdm(subsets, desc="Process subsets"):
     # query ごとに集約
     origin_group = {}
     for _, row in origin_df.iterrows():
-        origin_group.setdefault(row["query"], []).append(row)
+        origin_group.setdefault(row["query"].strip(), []).append(row)
 
     subset_dataset = base_dataset.filter(lambda ex, s=subset: ex["subset"] == s)
     if len(subset_dataset) == 0:
@@ -80,23 +80,28 @@ for subset in tqdm(subsets, desc="Process subsets"):
     subset_df = subset_dataset.to_pandas()
 
     collected_neg_lists = []
-    all_neg_for_subset = set()
 
     for _, r in subset_df.iterrows():
         q = r[query_col]
+        if q.startswith("Instruct:"):
+            q = q.split("Query:")[1].strip()
         p = r["pos"]
         neg_set = set()
         for cand in origin_group.get(q, []):
-            if p in cand["pos"]:
-                for n in cand["neg"]:
+            for n in cand["neg"]:
+                if n != p:
                     if n and n not in (q, p):
                         neg_set.add(n)
-        if NEG_MAX_PER_PAIR is not None and len(neg_set) > NEG_MAX_PER_PAIR:
-            neg_list = sorted(neg_set)[:NEG_MAX_PER_PAIR]
+            if NEG_MAX_PER_PAIR is not None and len(neg_set) > NEG_MAX_PER_PAIR:
+                break
         else:
-            neg_list = sorted(neg_set)
-        collected_neg_lists.append(neg_list)
-        all_neg_for_subset.update(neg_list)
+            if len(neg_set) == NEG_MAX_PER_PAIR:
+                pass
+            else:
+                import pdb
+
+                pdb.set_trace()
+        collected_neg_lists.append(list(neg_set)[:NEG_MAX_PER_PAIR] if NEG_MAX_PER_PAIR is not None else list(neg_set))
 
     out_df = subset_df.copy()
     out_df["neg"] = collected_neg_lists
@@ -109,10 +114,13 @@ for subset in tqdm(subsets, desc="Process subsets"):
     summary_rows.append({
         "subset": subset,
         "rows": len(final_dataset),
-        "unique_neg_in_subset": len(all_neg_for_subset),
+        "max_neg_per_pair": max(len(lst) for lst in collected_neg_lists) if collected_neg_lists else 0,
+        "min_neg_per_pair": min(len(lst) for lst in collected_neg_lists) if collected_neg_lists else 0,
         "pairs_with_neg": sum(1 for lst in collected_neg_lists if lst),
     })
-    print(f"[FINAL] subset={subset} rows={len(final_dataset)} unique_neg={len(all_neg_for_subset)} saved={out_dir}")
+    print(
+        f"[FINAL] subset={subset} rows={len(final_dataset)} max_neg={max(len(lst) for lst in collected_neg_lists) if collected_neg_lists else 0} min_neg={min(len(lst) for lst in collected_neg_lists) if collected_neg_lists else 0} saved={out_dir}"
+    )
 
 # 集計サマリ
 summary = {
