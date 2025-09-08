@@ -88,6 +88,9 @@ class SentEmb(L.LightningModule):
         embeddings = self.student_model.encode(inputs, convert_to_tensor=True, **kwargs)
         return embeddings
 
+    def on_train_epoch_start(self):
+        self.trainer.datamodule.rebuild_train_batches_for_epoch(self.current_epoch)
+
     @torch.no_grad()
     def validation_step(self, batch, batch_idx, dataloader_idx=0) -> Tensor:
         res = {}

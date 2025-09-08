@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import lightning as L
 import numpy as np
 import torch
+import torch.distributed as dist
 from datasets import load_from_disk
 from more_itertools import divide
 from torch.utils.data import DataLoader, Dataset
@@ -50,14 +51,22 @@ PREFIX_MAP = {
 
 @dataclass
 class Batch:
-    anc: BatchEncoding
-    pos: BatchEncoding
-    teacher_features: torch.Tensor
-    pos_features: torch.Tensor
+    anc: list[BatchEncoding]
+    pos: list[BatchEncoding]
+    teacher_features: list[torch.Tensor]
+    pos_features: list[torch.Tensor]
     subset: list[str]
 
     def __len__(self):
-        return len(self.anc)
+        return sum(len(b["input_ids"]) for b in self.anc)
+
+
+def get_rank_safe():
+    return dist.get_rank() if dist.is_available() and dist.is_initialized() else 0
+
+
+def get_world_size_safe() -> int:
+    return dist.get_world_size() if dist.is_available() and dist.is_initialized() else 1
 
 
 class TaskBatchDataset(Dataset):
@@ -65,7 +74,8 @@ class TaskBatchDataset(Dataset):
         self,
         hf_dataset,
         embeddings: np.ndarray,
-        batch_size: int,
+        per_rank_batch_size: int,  # 変更: per-rank のBS
+        world_size: int,  # 追加
         drop_last=False,
         shuffle_within_task=True,
         shuffle_task_batches=True,
@@ -73,7 +83,9 @@ class TaskBatchDataset(Dataset):
     ):
         self.hf_dataset = hf_dataset
         self.embeddings = embeddings
-        self.batch_size = batch_size
+        self.per_rank_batch_size = per_rank_batch_size
+        self.world_size = world_size
+        self.global_batch_size = per_rank_batch_size * world_size
         self.drop_last = drop_last
         self.shuffle_within_task = shuffle_within_task
         self.shuffle_task_batches = shuffle_task_batches
@@ -94,9 +106,10 @@ class TaskBatchDataset(Dataset):
         for _, idxs in grouped.items():
             if self.shuffle_within_task:
                 rng.shuffle(idxs)
-            for j in range(0, len(idxs), self.batch_size):
-                chunk = idxs[j : j + self.batch_size]
-                if len(chunk) < self.batch_size and self.drop_last:
+            # ここが「グローバルBS」刻み
+            for j in range(0, len(idxs), self.global_batch_size):
+                chunk = idxs[j : j + self.global_batch_size]
+                if len(chunk) < self.global_batch_size and self.drop_last:
                     continue
                 batches.append(chunk)
         if self.shuffle_task_batches:
@@ -126,6 +139,7 @@ class DataCollatorForContrastiveDistill:
     disable_instruction: bool = False
     add_prefix: bool = False
     num_chunk: int = 4
+    per_rank_batch_size: int = 32  # ★追加
 
     def preprocess(self, texts):
         return self.tokenizer(
@@ -137,9 +151,17 @@ class DataCollatorForContrastiveDistill:
         )
 
     def __call__(self, samples):
+        # samples は [[dict, dict, ...]] という入れ子（batch_size=1）なのでほどく
         if len(samples) == 1 and isinstance(samples[0], list):
             samples = samples[0]
 
+        rank = get_rank_safe()
+        start = rank * self.per_rank_batch_size
+        end = start + self.per_rank_batch_size
+        # ここで自分の取り分だけに
+        samples = samples[start:end]
+
+        # 以降は従来処理（※スライス後なので無駄がない）
         anc_text = [s["anc"] for s in samples]
         pos_text = [s["pos"] for s in samples]
 
@@ -153,8 +175,7 @@ class DataCollatorForContrastiveDistill:
                 p_query, p_doc = PREFIX_MAP.get(subset, ("query:", "document:"))
                 new_anc.append(f"{p_query} {s['anc']}")
                 new_pos.append(f"{p_doc} {s['pos']}")
-            anc_text = new_anc
-            pos_text = new_pos
+            anc_text, pos_text = new_anc, new_pos
 
         anc_features = [torch.Tensor(s["anc_features"]) for s in samples]
         pos_features = [torch.Tensor(s["pos_features"]) for s in samples]
@@ -164,7 +185,7 @@ class DataCollatorForContrastiveDistill:
             pos=[self.preprocess(list(p)) for p in divide(self.num_chunk, pos_text)],
             teacher_features=anc_features,
             pos_features=pos_features,
-            subset=subset,
+            subset=[s["subset"] for s in samples],  # バグ修正: まとめて返す
         )
 
 
@@ -184,19 +205,28 @@ class DataModuleForDistill(L.LightningDataModule):
         super().__init__()
         self.data_dir = data_dir
         self.data_num = data_num
-        self.batch_size = batch_size
+        self.per_rank_batch_size = batch_size  # 意味を明確化
         self.eval_batch_size = eval_batch_size if eval_batch_size else batch_size
         self.num_workers = num_workers
         self.tokenizer = student_tokenizer
         self.seed = seed
 
         if ("triplet" in str(self.data_dir)) or ("gte" in str(self.data_dir)):
-            self.collate_fn = DataCollatorForContrastiveDistill(
+            self.collate_fn_train = DataCollatorForContrastiveDistill(
                 tokenizer=self.tokenizer,
                 max_length=max_length,
                 disable_instruction=("gte" in str(self.data_dir)),
                 add_prefix=add_prefix,
                 num_chunk=4,
+                per_rank_batch_size=self.per_rank_batch_size,
+            )
+            self.collate_fn_val = DataCollatorForContrastiveDistill(
+                tokenizer=self.tokenizer,
+                max_length=max_length,
+                disable_instruction=("gte" in str(self.data_dir)),
+                add_prefix=add_prefix,
+                num_chunk=4,
+                per_rank_batch_size=self.eval_batch_size,  # ← val 用
             )
         else:
             raise ValueError(f"Unknown data type in {self.data_dir}")
@@ -231,12 +261,14 @@ class DataModuleForDistill(L.LightningDataModule):
 
         datasets = datasets.train_test_split(test_size=int(min(len(datasets) * 0.1, 1000)), seed=42, shuffle=True)
         logger.info(f"Total samples: {len(datasets)}, embeddings: {embeddings.shape}")
-
+        world_size = get_world_size_safe()  # ← ここで取得
+        logger.info(f"World size: {world_size}")
         # 初回バッチ構築
         self.train_batches_ds = TaskBatchDataset(
             datasets["train"],
             embeddings,
-            batch_size=self.batch_size,
+            per_rank_batch_size=self.per_rank_batch_size,  # ★変更
+            world_size=world_size,  # ★追加
             drop_last=True,
             shuffle_within_task=True,
             shuffle_task_batches=True,
@@ -246,7 +278,8 @@ class DataModuleForDistill(L.LightningDataModule):
         self.val_batches_ds = TaskBatchDataset(
             datasets["test"],
             embeddings,
-            batch_size=self.eval_batch_size,
+            per_rank_batch_size=self.eval_batch_size,  # ★変更
+            world_size=world_size,  # ★追加
             drop_last=True,
             shuffle_within_task=False,
             shuffle_task_batches=False,
@@ -262,9 +295,9 @@ class DataModuleForDistill(L.LightningDataModule):
         return DataLoader(
             self.train_batches_ds,
             batch_size=1,
-            shuffle=False,  # Lightning が DistributedSampler を差し込む
+            shuffle=False,  # ← Sampler を入れ替えさせない
             num_workers=self.num_workers,
-            collate_fn=self.collate_fn,
+            collate_fn=self.collate_fn_train,
             pin_memory=True,
         )
 
@@ -274,6 +307,6 @@ class DataModuleForDistill(L.LightningDataModule):
             batch_size=1,
             shuffle=False,
             num_workers=self.num_workers,
-            collate_fn=self.collate_fn,
+            collate_fn=self.collate_fn_val,
             pin_memory=True,
         )
