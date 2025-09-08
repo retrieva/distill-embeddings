@@ -8,9 +8,9 @@ from lightning import LightningModule
 from torch import Tensor, nn
 
 from src.training.data import Batch
-from src.training.distil_losses import CKD, DP_KLD, KLD, MSE, TAID, DistillLoss, DistilLoss, JasperStella
+from src.training.distil_losses import CKD, KLD, MSE, TAID, DistilLoss
 
-taid_forward_fn_map = {"ckd": CKD, "kld": KLD, "mse": MSE, "dp_kld": DP_KLD, "js": JasperStella}
+taid_forward_fn_map = {"ckd": CKD, "kld": KLD, "mse": MSE}
 
 
 @dataclass
@@ -36,10 +36,103 @@ def gather(lightning_module: LightningModule, tensor: torch.Tensor, sync_grads: 
     return gathered_concatenated
 
 
+def encode_chunks(model, chunks):
+    # chunks: list[BatchEncoding]（チャンク列）
+    return torch.cat([model(c)["sentence_embedding"] for c in chunks], dim=0)  # [B_local, D]
+
+
+def build_candidates_flat(lm: LightningModule, batch: Batch, use_pos: bool, use_neg: bool):
+    """
+    returns:
+      q_s: [B_all, D]         （anchor student）
+      q_t: [B_all, D]         （anchor teacher）
+      pos_s: [B_all, D] or None   （pos only → CSE用）
+      cand_s_flat: [B_all*C, D] or None   （pos(+neg) を flat）
+      cand_t_flat: [B_all*C, D] or None
+      C: int（1+K or 0）
+    """
+    # anchors
+    q_s_local = encode_chunks(lm.student_model, batch.anc)
+    q_t_local = (
+        torch.stack(batch.teacher_features, dim=0)
+        if isinstance(batch.teacher_features, list)
+        else batch.teacher_features
+    )
+    q_t_local = q_t_local[:, : q_s_local.shape[1]]
+    q_s = gather(lm, q_s_local, sync_grads=True)
+    q_t = gather(lm, q_t_local, sync_grads=False)
+
+    if not use_pos:
+        return q_s, q_t, None, None, None, 0
+
+    # pos (student)
+    pos_s_local = encode_chunks(lm.student_model, batch.pos)  # [B_l, D]
+    pos_s = gather(lm, pos_s_local, sync_grads=True)  # [B_all, D]
+
+    # candidates: start with pos
+    C = 1
+    cand_s_local = pos_s_local.unsqueeze(1)  # [B_l, 1, D]
+
+    # teacher candidates
+    pos_t_local = (
+        torch.stack(batch.pos_features, dim=0) if isinstance(batch.pos_features, list) else batch.pos_features
+    )
+    pos_t_local = pos_t_local[:, : q_s_local.shape[1]]
+    cand_t_local = pos_t_local.unsqueeze(1)  # [B_l, 1, D]
+
+    K = getattr(batch, "num_neg", 0) if (use_neg and len(getattr(batch, "neg", [])) > 0) else 0
+    if K > 0 and use_neg:
+        neg_locals = [encode_chunks(lm.student_model, batch.neg[j]) for j in range(K)]  # list of [B_l, D]
+        cand_s_local = torch.cat([cand_s_local] + [n.unsqueeze(1) for n in neg_locals], dim=1)  # [B_l, 1+K, D]
+
+        neg_t_local = torch.stack([torch.stack(nlist, dim=0) for nlist in batch.neg_features], dim=0)  # [B_l, K, D]
+        neg_t_local = neg_t_local[:, :, : q_s_local.shape[1]]
+        cand_t_local = torch.cat([cand_t_local, neg_t_local], dim=1)  # [B_l, 1+K, D]
+        C = 1 + K
+
+    # flat にしてから gather（効率＆実装簡潔）
+    B_l = cand_s_local.shape[0]
+    cand_s_flat = gather(lm, cand_s_local.reshape(B_l * C, -1), sync_grads=True)  # [B_all*C, D]
+    cand_t_flat = gather(lm, cand_t_local.reshape(B_l * C, -1), sync_grads=False)  # [B_all*C, D]
+    return q_s, q_t, pos_s, cand_s_flat, cand_t_flat, C
+
+
+def build_student_cand_flat(lm: LightningModule, batch: Batch, use_pos: bool, use_neg: bool):
+    """
+    returns:
+      q_s: [B_all, D]                 # anchor student
+      cand_s_flat: [B_all*C, D] or None
+      C: int  # 1+K or 0
+    """
+    # anchors
+    anc_s_local = encode_chunks(lm.student_model, batch.anc)  # [B_l, D]
+    anc_s = gather(lm, anc_s_local, sync_grads=True)  # [B_all, D]
+
+    if not use_pos:
+        return anc_s, None, 0
+
+    # pos
+    pos_s_local = encode_chunks(lm.student_model, batch.pos)  # [B_l, D]
+    cand_s_local = pos_s_local.unsqueeze(1)  # [B_l, 1, D]
+    C = 1
+
+    # hard neg
+    K = getattr(batch, "num_neg", 0) if (use_neg and len(getattr(batch, "neg", [])) > 0) else 0
+    if K > 0 and use_neg:
+        neg_locals = [encode_chunks(lm.student_model, batch.neg[j]) for j in range(K)]  # list of [B_l, D]
+        cand_s_local = torch.cat([cand_s_local] + [n.unsqueeze(1) for n in neg_locals], dim=1)  # [B_l,1+K,D]
+        C = 1 + K
+
+    B_l = cand_s_local.shape[0]
+    cand_s_flat = gather(lm, cand_s_local.reshape(B_l * C, -1), sync_grads=True)  # [B_all*C, D]
+    return anc_s, cand_s_flat, C
+
+
 class InfoCSE(nn.Module):
     def __init__(self, args=None):
         super().__init__()
         self.use_pos = args.use_pos if hasattr(args, "use_pos") else False
+        self.use_neg = args.use_neg if hasattr(args, "use_neg") else False
         self.temp = args.cse_temp if hasattr(args, "cse_temp") else 0.05
 
     def forward(
@@ -49,34 +142,28 @@ class InfoCSE(nn.Module):
         validation: bool = False,
         **kwargs,
     ) -> LossOutput:
-        # あとで全部これにする
-        local_features = torch.cat(
-            [lightning_module.student_model(anc)["sentence_embedding"] for anc in batch.anc], dim=0
+        anc_s, cand_s_flat, C = build_student_cand_flat(
+            lightning_module,
+            batch,
+            self.use_pos,
+            self.use_neg,
         )
-        local_features = F.normalize(local_features, dim=-1)
-        global_features = gather(lightning_module, local_features)
-        if self.use_pos:
-            local_pos_features = torch.cat(
-                [lightning_module.student_model(pos)["sentence_embedding"] for pos in batch.pos], dim=0
-            )
-        else:
+        if not self.use_pos:
             # unsupと同じように同じ文2回かける（dropoutでちょっと違う埋め込みになるはず）
-            local_pos_features = torch.cat(
-                [lightning_module.student_model(anc)["sentence_embedding"] for anc in batch.anc], dim=0
-            )
-        local_pos_features = F.normalize(local_pos_features, dim=-1)
-        # 3. 全てのGPUから 'pos_features' を収集して結合
-        global_pos_features = gather(lightning_module, local_pos_features)
-        loss = self.loss_fn(features=global_features, pos_features=global_pos_features)
+            local_anc_s_2 = encode_chunks(lightning_module.student_model, batch.anc)
+            global_anc_s_2 = gather(lightning_module, local_anc_s_2)
+            cand_s_flat = global_anc_s_2
+        loss = self.loss_fn(F.normalize(anc_s, dim=-1), F.normalize(cand_s_flat, dim=-1), C)
         return loss
 
     def loss_fn(
         self,
         features: torch.Tensor,
         pos_features: torch.Tensor,
+        candidates_per_anchor: int = 1,
         **kwargs,
     ) -> LossOutput:
-        labels = torch.arange(features.size(0), device=features.device)
+        labels = torch.arange(features.size(0), device=features.device) * max(candidates_per_anchor, 1)
         # クエリとキー間の類似度スコアを計算 ab,cb->ac
         scores = einsum(features, pos_features, "b d, k d -> b k") / self.temp
 
@@ -114,69 +201,39 @@ class KDLoss(nn.Module):
     ) -> LossOutput:
         loss_dict = {}
 
-        local_student_features = torch.cat(
-            [lightning_module.student_model(anc)["sentence_embedding"] for anc in batch.anc], dim=0
+        anc_s, anc_t, pos_s, cand_s_flat, cand_t_flat, C = build_candidates_flat(
+            lightning_module,
+            batch,
+            self.use_pos,
+            self.use_neg,
         )
-        local_teacher_features = batch.teacher_features
-        if isinstance(local_teacher_features, list):
-            local_teacher_features = torch.stack(local_teacher_features, dim=0)
-        # studentと次元数を揃える（マトリョーシカ埋め込みを想定）
-        local_teacher_features = local_teacher_features[:, : local_student_features.shape[1]]
-
-        # 全GPUから学生・教師の特徴量を集約
-        global_student_features = gather(lightning_module, local_student_features)
-        global_teacher_features = gather(lightning_module, local_teacher_features)
-        if self.use_pos:
-            local_pos_student_features = torch.cat(
-                [lightning_module.student_model(pos)["sentence_embedding"] for pos in batch.pos], dim=0
-            )
-            local_pos_teacher_features = batch.pos_features
-            if isinstance(local_pos_teacher_features, list):
-                local_pos_teacher_features = torch.stack(local_pos_teacher_features, dim=0)
-            local_pos_teacher_features = local_pos_teacher_features[:, : local_pos_student_features.shape[1]]
-
-            # Positiveペアの特徴量も全GPUから集約
-            global_pos_student_features = gather(lightning_module, local_pos_student_features)
-            global_pos_teacher_features = gather(lightning_module, local_pos_teacher_features)
-        else:
-            global_pos_student_features = None
-            global_pos_teacher_features = None
 
         distill_loss_dict = self.distil_loss_fn(
             lightning_module=lightning_module,
-            projected_features=global_student_features,
-            teacher_features=global_teacher_features,
-            pos_projected_features=global_pos_student_features,
-            pos_teacher_features=global_pos_teacher_features,
+            projected_features=anc_s,
+            teacher_features=anc_t,
+            hyp_projected_features=cand_s_flat,
+            hyp_teacher_features=cand_t_flat,
+            candidates_per_anchor=C,
             validation=validation,
             **kwargs,
         )
         loss_dict = distill_loss_dict
         if self.distill_weight != 1.0:
-            labels = torch.arange(global_student_features.size(0), device=global_student_features.device)
+            labels = torch.arange(anc_s.size(0), device=anc_s.device) * max(C, 1)
             # クエリとキー間の類似度スコアを計算 ab,cb->ac
-            if self.use_pos:
-                scores = (
-                    einsum(
-                        F.normalize(global_student_features, dim=-1),
-                        F.normalize(global_pos_student_features, dim=-1),
-                        "b d, k d -> b k",
-                    )
-                    / self.cse_temp
+            if not self.use_pos:
+                local_anc_2 = encode_chunks(lightning_module.student_model, batch.anc)
+                global_anc_2 = gather(lightning_module, local_anc_2, sync_grads=True)
+                cand_s_flat = global_anc_2
+            scores = (
+                einsum(
+                    F.normalize(anc_s, dim=-1),
+                    F.normalize(cand_s_flat, dim=-1),
+                    "b d, k d -> b k",
                 )
-            else:
-                local_pos_features = torch.cat(
-                    [lightning_module.student_model(anc)["sentence_embedding"] for anc in batch.anc], dim=0
-                )
-                global_pos_features = gather(lightning_module, local_pos_features)
-                scores = (
-                    einsum(
-                        F.normalize(global_student_features, dim=-1),
-                        F.normalize(global_pos_features, dim=-1),
-                        "b d, k d -> b k",
-                    )
-                    / self.cse_temp
-                )
+                / self.cse_temp
+            )
             # 対照学習損失：生徒埋め込みが対応する教師埋め込みに最も類似するように学習
             cse_loss = F.cross_entropy(scores, labels)
             loss = distill_loss_dict["loss"] * self.distill_weight + cse_loss * (1 - self.distill_weight)
@@ -208,14 +265,8 @@ def get_loss_fn(args):
         distil_loss_fn = MSE(args)
     elif args.loss_type == "kld":
         distil_loss_fn = KLD(args)
-    elif args.loss_type == "dp_kld":
-        distil_loss_fn = DP_KLD(args)
-    elif args.loss_type == "js":
-        distil_loss_fn = JasperStella(args)
-    elif args.loss_type == "distill":
-        distil_loss_fn = DistillLoss(args)
-    elif args.loss_type == "infocse":
-        distil_loss_fn = InfoCSE(args)
     else:
         raise NotImplementedError(args.loss_type)
-    return KDLoss(use_pos=args.use_pos, distil_loss_fn=distil_loss_fn, distill_weight=args.distill_weight)
+    return KDLoss(
+        use_pos=args.use_pos, use_neg=args.use_neg, distil_loss_fn=distil_loss_fn, distill_weight=args.distill_weight
+    )

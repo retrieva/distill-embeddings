@@ -57,6 +57,10 @@ class Batch:
     pos_features: list[torch.Tensor]
     subset: list[str]
 
+    neg: list[list[BatchEncoding]]  # 長さK。neg[j] は「j番目negの全サンプル分」を分割したチャンク列
+    neg_features: list[list[torch.Tensor]]  # [B][K] でも [K][B] でもOKだがここは [B][K] にします
+    num_neg: int = 0  # K
+
     def __len__(self):
         return sum(len(b["input_ids"]) for b in self.anc)
 
@@ -120,16 +124,44 @@ class TaskBatchDataset(Dataset):
         return len(self._batches)
 
     def __getitem__(self, bidx):
-        return [
-            {
-                "anc": self.hf_dataset[i]["anc"],
-                "anc_features": self.embeddings[self.hf_dataset[i]["anc_emb_idx"]],
-                "pos": self.hf_dataset[i]["pos"],
-                "pos_features": self.embeddings[self.hf_dataset[i]["pos_emb_idx"]],
-                "subset": self.hf_dataset[i]["subset"],
+        idxs = self._batches[bidx]
+        items = []
+        for i in idxs:
+            rec = self.hf_dataset[i]
+            item = {
+                "anc": rec["anc"],
+                "anc_features": self.embeddings[rec["anc_emb_idx"]],
+                "pos": rec["pos"],
+                "pos_features": self.embeddings[rec["pos_emb_idx"]],
+                "subset": rec["subset"],
             }
-            for i in self._batches[bidx]
-        ]
+
+            # neg は存在すれば使う。無ければ空。
+            neg_list = rec.get("neg") or []
+            neg_idx = rec.get("neg_emb_idx") or []
+            m = min(len(neg_list), len(neg_idx))
+            if m > 0:
+                neg_list = neg_list[:m]
+                neg_idx = neg_idx[:m]
+                item["neg"] = neg_list
+                item["neg_features"] = [self.embeddings[j] for j in neg_idx]
+            else:
+                item["neg"] = []
+                item["neg_features"] = []
+
+            items.append(item)
+
+        if not items:
+            return items
+        K = min(len(it["neg"]) for it in items)
+
+        # そろえる（K=0 ならそのまま）
+        if K >= 0:
+            for it in items:
+                it["neg"] = it["neg"][:K]
+                it["neg_features"] = it["neg_features"][:K]
+
+        return items
 
 
 @dataclass
@@ -151,20 +183,18 @@ class DataCollatorForContrastiveDistill:
         )
 
     def __call__(self, samples):
-        # samples は [[dict, dict, ...]] という入れ子（batch_size=1）なのでほどく
         if len(samples) == 1 and isinstance(samples[0], list):
             samples = samples[0]
 
+        # rank スライス
         rank = get_rank_safe()
         start = rank * self.per_rank_batch_size
         end = start + self.per_rank_batch_size
-        # ここで自分の取り分だけに
         samples = samples[start:end]
 
-        # 以降は従来処理（※スライス後なので無駄がない）
+        # anc/pos（既存どおり）
         anc_text = [s["anc"] for s in samples]
         pos_text = [s["pos"] for s in samples]
-
         if self.disable_instruction:
             anc_text = [t.split("Query:", 1)[1].strip() if "Query:" in t else t for t in anc_text]
 
@@ -176,16 +206,39 @@ class DataCollatorForContrastiveDistill:
                 new_anc.append(f"{p_query} {s['anc']}")
                 new_pos.append(f"{p_doc} {s['pos']}")
             anc_text, pos_text = new_anc, new_pos
+        anc_feats = [torch.as_tensor(s["anc_features"], dtype=torch.float32) for s in samples]
+        pos_feats = [torch.as_tensor(s["pos_features"], dtype=torch.float32) for s in samples]
 
-        anc_features = [torch.Tensor(s["anc_features"]) for s in samples]
-        pos_features = [torch.Tensor(s["pos_features"]) for s in samples]
+        # --- negatives ---
+        K = 0
+        neg_tokenized_per_slot = []
+        neg_features = []
+
+        if len(samples) > 0:
+            # __getitem__ 側で既に整形済み（全サンプル同じ長さ）
+            K = len(samples[0].get("neg", []))
+
+        if K > 0:
+            # スロットごとに束ねる
+            texts_per_slot = [[s["neg"][j] for s in samples] for j in range(K)]
+            for j in range(K):
+                neg_tokenized_per_slot.append([
+                    self.preprocess(list(chunk)) for chunk in divide(self.num_chunk, texts_per_slot[j])
+                ])
+            neg_features = [[torch.as_tensor(f, dtype=torch.float32) for f in s["neg_features"]] for s in samples]
+        else:
+            neg_tokenized_per_slot = []  # 空でOK
+            neg_features = []  # 空でOK
 
         return Batch(
             anc=[self.preprocess(list(a)) for a in divide(self.num_chunk, anc_text)],
             pos=[self.preprocess(list(p)) for p in divide(self.num_chunk, pos_text)],
-            teacher_features=anc_features,
-            pos_features=pos_features,
-            subset=[s["subset"] for s in samples],  # バグ修正: まとめて返す
+            teacher_features=anc_feats,
+            pos_features=pos_feats,
+            subset=[s["subset"] for s in samples],
+            neg=neg_tokenized_per_slot,  # 空でもよい
+            neg_features=neg_features,  # 空でもよい
+            num_neg=K,
         )
 
 
@@ -260,26 +313,26 @@ class DataModuleForDistill(L.LightningDataModule):
                 raise ValueError(f"Data path {data_path} does not exist.")
 
         datasets = datasets.train_test_split(test_size=int(min(len(datasets) * 0.1, 1000)), seed=42, shuffle=True)
-        logger.info(f"Total samples: {len(datasets)}, embeddings: {embeddings.shape}")
+        logger.info(f"Train: {len(datasets['train'])}, Test: {len(datasets['test'])}, embeddings: {embeddings.shape}")
+
         world_size = get_world_size_safe()  # ← ここで取得
         logger.info(f"World size: {world_size}")
-        # 初回バッチ構築
+
         self.train_batches_ds = TaskBatchDataset(
             datasets["train"],
             embeddings,
-            per_rank_batch_size=self.per_rank_batch_size,  # ★変更
-            world_size=world_size,  # ★追加
+            per_rank_batch_size=self.per_rank_batch_size,
+            world_size=world_size,
             drop_last=True,
             shuffle_within_task=True,
             shuffle_task_batches=True,
             seed=self.seed,
         )
-        # 評価は順序固定 (タスク内シャッフル無し / タスクバッチ順序固定)
         self.val_batches_ds = TaskBatchDataset(
             datasets["test"],
             embeddings,
-            per_rank_batch_size=self.eval_batch_size,  # ★変更
-            world_size=world_size,  # ★追加
+            per_rank_batch_size=self.eval_batch_size,
+            world_size=world_size,
             drop_last=True,
             shuffle_within_task=False,
             shuffle_task_batches=False,

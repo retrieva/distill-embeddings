@@ -5,9 +5,10 @@ TODO：実装
 """
 
 import torch
-from torch.nn import functional as F
-from .base import DistilLoss
 from lightning import LightningModule
+from torch.nn import functional as F
+
+from .base import DistilLoss
 
 
 class MSE(DistilLoss):
@@ -26,6 +27,7 @@ class MSE(DistilLoss):
         self,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
+        candidates_per_anchor: int = 1,
         validation: bool = False,
         **kwargs,
     ) -> torch.Tensor:
@@ -40,6 +42,7 @@ class MSE(DistilLoss):
         lightning_module: LightningModule,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
+        candidates_per_anchor: int = 1,
         validation: bool = False,
         **kwargs,
     ) -> torch.Tensor:

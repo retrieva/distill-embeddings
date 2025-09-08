@@ -4,10 +4,10 @@ This implementation is based on [DistilCSE's](https://github.com/caskcsg/sentemb
 
 import torch
 import torch.nn.functional as F
-from .base import DistilLoss
-from lightning import LightningModule
-from typing import Dict, Optional
 from einops import einsum
+from lightning import LightningModule
+
+from .base import DistilLoss
 
 
 class CKD(DistilLoss):
@@ -19,7 +19,7 @@ class CKD(DistilLoss):
     正解ラベル（自分自身のインデックス）でクロスエントロピー損失を適用する。
     """
 
-    def __init__(self, args: Optional[Dict] = None):
+    def __init__(self, args: dict | None = None):
         super().__init__()
         self.temp = args.ckd_temp if hasattr(args, "ckd_temp") else 0.05
         self.max_queue_len = args.ckd_max_queue_len if hasattr(args, "ckd_max_queue_len") else 65536
@@ -30,8 +30,8 @@ class CKD(DistilLoss):
         self,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
-        pos_projected_features: torch.Tensor = None,
-        pos_teacher_features: torch.Tensor = None,
+        hyp_projected_features: torch.Tensor = None,
+        hyp_teacher_features: torch.Tensor = None,
         **kwargs,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -40,10 +40,10 @@ class CKD(DistilLoss):
         # 類似度よりは埋め込みの重みつきわの方が良さそうだから、一旦こうしてみる
         # ここでやっとかないとTAIDで混ぜる時にNormの違いが影響しちゃいそう
         projected_features = F.normalize(projected_features, dim=-1)
-        if pos_projected_features is not None and pos_teacher_features is not None and self.use_pos:
+        if hyp_projected_features is not None and hyp_teacher_features is not None and self.use_pos:
             # 対照学習のために、正例の埋め込みも必要な場合
-            pos_teacher_features = F.normalize(pos_teacher_features, dim=-1)
-            return projected_features, pos_teacher_features
+            hyp_teacher_features = F.normalize(hyp_teacher_features, dim=-1)
+            return projected_features, hyp_teacher_features
         else:
             teacher_features = F.normalize(teacher_features, dim=-1)
             return projected_features, teacher_features
@@ -53,6 +53,7 @@ class CKD(DistilLoss):
         student_features: torch.Tensor,
         teacher_features: torch.Tensor,
         temp: float = 0.05,
+        candidates_per_anchor: int = 1,
         validation: bool = False,
         **kwargs,
     ) -> torch.Tensor:
@@ -61,7 +62,7 @@ class CKD(DistilLoss):
         生徒埋め込みが教師埋め込みに最も類似するように学習する。
         """
         # 各サンプルのインデックスをラベルとする（対角要素が正解）
-        labels = torch.arange(student_features.size(0), device=student_features.device)
+        labels = torch.arange(student_features.size(0), device=student_features.device) * max(1, candidates_per_anchor)
         # 生徒と教師の埋め込みを正規化
         # ２回やっちゃっても結果は一緒のはず
         student_features = F.normalize(student_features, dim=-1)
@@ -86,22 +87,24 @@ class CKD(DistilLoss):
         lightning_module: LightningModule,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
-        pos_projected_features: torch.Tensor = None,
-        pos_teacher_features: torch.Tensor = None,
+        hyp_projected_features: torch.Tensor = None,
+        hyp_teacher_features: torch.Tensor = None,
+        candidates_per_anchor: int = 1,
         validation: bool = False,
         **kwargs,
     ) -> torch.Tensor:
         projected_features, teacher_features = self.make_features(
             projected_features=projected_features,
-            pos_projected_features=pos_projected_features,
+            hyp_projected_features=hyp_projected_features,
             teacher_features=teacher_features,
-            pos_teacher_features=pos_teacher_features,
+            hyp_teacher_features=hyp_teacher_features,
         )
 
         loss, loss_dict = self.compute_loss(
             projected_features,
             teacher_features,
             temp=self.temp,
+            candidates_per_anchor=candidates_per_anchor,
             validation=validation,
         )
         return loss_dict
