@@ -51,17 +51,17 @@ class KLD(DistilLoss):
         self,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
-        pos_projected_features: torch.Tensor = None,
-        pos_teacher_features: torch.Tensor = None,
+        hyp_projected_features: torch.Tensor = None,
+        hyp_teacher_features: torch.Tensor = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         student_features = F.normalize(projected_features, dim=-1)
         teacher_features = F.normalize(teacher_features, dim=-1)
-        if pos_projected_features is not None and pos_teacher_features is not None and self.use_pos:
-            pos_student_features = F.normalize(pos_projected_features, dim=-1)
-            pos_teacher_features = F.normalize(pos_teacher_features, dim=-1)
+        if hyp_projected_features is not None and hyp_teacher_features is not None and self.use_pos:
+            hyp_student_features = F.normalize(hyp_projected_features, dim=-1)
+            hyp_teacher_features = F.normalize(hyp_teacher_features, dim=-1)
             # 類似度行列を計算（バッチ内の各文同士の類似度）
-            sim_s = einsum(student_features, pos_student_features, "b d, k d -> b k") / self.temp
-            sim_t = einsum(teacher_features, pos_teacher_features, "b d, k d -> b k") / self.temp
+            sim_s = einsum(student_features, hyp_student_features, "b d, k d -> b k") / self.temp
+            sim_t = einsum(teacher_features, hyp_teacher_features, "b d, k d -> b k") / self.temp
         else:
             # 類似度行列を計算（バッチ内の各文同士の類似度）
             sim_s = einsum(student_features, student_features, "b d, k d -> b k") / self.temp
