@@ -12,7 +12,7 @@ nvidia-smi
 uv sync
 
 uv run python -m src.data_processing.gte_en_plus_data.neg_encode \
-    --teacher_model "Qwen/Qwen3-Embedding-4B" \
+    --model "Qwen/Qwen3-Embedding-4B" \
     --long_batch_size 2 \
     --short_batch_size 64 \
     --max_length 4096 \
