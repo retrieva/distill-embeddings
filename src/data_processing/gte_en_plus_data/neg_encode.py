@@ -80,7 +80,7 @@ def main():
     print(f"  Long texts: {len(long_texts)} | Short texts: {len(short_texts)} (threshold={args.threshold})")
 
     # モデル・GPU設定
-    model = SentenceTransformer(args.model)
+    model = SentenceTransformer(args.model).bfloat16()
     gpu_count = get_available_gpus()
     use_multigpu = gpu_count > 1 and not args.disable_multigpu
     pool = None
@@ -91,6 +91,7 @@ def main():
         print("  Using single GPU/CPU")
 
     # エンコード（チェックポイント付き）
+    # 他の encode と同様に保存は float32 を使用（互換性重視）
     if len(long_texts) > 0:
         if use_multigpu:
             long_embs = encode_with_checkpoint_multigpu(
@@ -137,6 +138,7 @@ def main():
     embs = np.zeros((len(texts), emb_dim), dtype=np.float32)
     if len(long_indices) > 0:
         for dst_i, src_i in enumerate(long_indices):
+            # np.ndarray の型に合わせて自動的に bfloat16 へ変換
             embs[src_i] = long_embs[dst_i]
     if len(short_indices) > 0:
         for dst_i, src_i in enumerate(short_indices):
