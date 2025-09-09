@@ -115,6 +115,7 @@ class SentEmb(L.LightningModule):
     def on_train_epoch_end(self):
         if not self.trainer.is_global_zero:
             return
+        self.trainer.save_checkpoint(self.args.output_dir / "last.ckpt")
         if not self.args.mteb_eval:
             return
         try:
@@ -167,8 +168,10 @@ class SentEmb(L.LightningModule):
                 self.student_model.prompts = model_prompts
             # MTEB evaluation
             output_folder = self.args.output_dir / "mteb_eval"
+            tasks = mteb.get_benchmark("MTEB(eng,v2)").tasks
             evaluation = mteb.MTEB(
-                tasks=self.on_eval_tasks,
+                tasks=tasks,
+                # tasks=self.on_eval_tasks,
                 task_langs=[self.args.language],
             )
             import warnings
