@@ -1,7 +1,6 @@
-from typing import Union, Dict
 import torch
-from torch import nn
 from lightning.pytorch import LightningModule
+from torch import nn
 
 
 class DistilLoss(nn.Module):
@@ -13,9 +12,10 @@ class DistilLoss(nn.Module):
         lightning_module: LightningModule,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
-        pos_projected_features: torch.Tensor = None,
-        pos_teacher_features: torch.Tensor = None,
+        hyp_projected_features: torch.Tensor = None,
+        hyp_teacher_features: torch.Tensor = None,
+        candidates_per_anchor: int = 1,
         validation: bool = False,
         **kwargs,
-    ) -> Union[Dict, torch.Tensor]:
+    ) -> dict | torch.Tensor:
         raise NotImplementedError

@@ -57,6 +57,7 @@ def parse_args():
     # Other loss params
     loss_args.add_argument("--ckd_max_queue_len", type=int, default=65536, help="maximum queue length for CKD")
     loss_args.add_argument("--use_pos", action="store_true", help="use positive samples (contrastive)")
+    loss_args.add_argument("--use_neg", action="store_true", help="use negative samples (contrastive)")
 
     # --- Logging & Evaluation Arguments ---
     log_eval_args = parser.add_argument_group("Logging & Evaluation Arguments")

@@ -1,8 +1,7 @@
 import torch
-import torch.nn.functional as F
 from lightning import LightningModule
+
 from .base import DistilLoss
-from typing import Dict, Optional
 
 
 class TAID(DistilLoss):
@@ -14,7 +13,7 @@ class TAID(DistilLoss):
         alpha: float = 5e-4,
         beta: float = 0.99,
         disable_adaptive: bool = False,
-        args: Optional[Dict] = None,
+        args: dict | None = None,
     ):
         super().__init__()
         # validation
@@ -66,18 +65,24 @@ class TAID(DistilLoss):
         self,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
-        pos_projected_features: torch.Tensor = None,
-        pos_teacher_features: torch.Tensor = None,
+        hyp_projected_features: torch.Tensor = None,
+        hyp_teacher_features: torch.Tensor = None,
+        candidates_per_anchor: int = 1,
         validation: bool = False,
     ):
         student_features, teacher_features = self.forward_fn.make_features(
             projected_features=projected_features,
             teacher_features=teacher_features,
-            pos_projected_features=pos_projected_features,
-            pos_teacher_features=pos_teacher_features,
+            hyp_projected_features=hyp_projected_features,
+            hyp_teacher_features=hyp_teacher_features,
         )
         p_t = (1 - self.t) * student_features.detach() + self.t * teacher_features
-        distil_loss, loss_dict = self.forward_fn.compute_loss(student_features, p_t, validation=validation)
+        distil_loss, loss_dict = self.forward_fn.compute_loss(
+            student_features,
+            p_t,
+            candidates_per_anchor=candidates_per_anchor,
+            validation=validation,
+        )
         return distil_loss, loss_dict
 
     def forward(
@@ -85,8 +90,9 @@ class TAID(DistilLoss):
         lightning_module: LightningModule,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
-        pos_projected_features: torch.Tensor = None,
-        pos_teacher_features: torch.Tensor = None,
+        hyp_projected_features: torch.Tensor = None,
+        hyp_teacher_features: torch.Tensor = None,
+        candidates_per_anchor: int = 1,
         validation: bool = False,
         **kwargs,
     ) -> torch.Tensor:
@@ -94,8 +100,9 @@ class TAID(DistilLoss):
         loss, loss_dict = self.compute_loss(
             projected_features=projected_features,
             teacher_features=teacher_features,
-            pos_projected_features=pos_projected_features,
-            pos_teacher_features=pos_teacher_features,
+            hyp_projected_features=hyp_projected_features,
+            hyp_teacher_features=hyp_teacher_features,
+            candidates_per_anchor=candidates_per_anchor,
             validation=validation,
         )
 

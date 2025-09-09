@@ -31,6 +31,7 @@ class KLD(DistilLoss):
         self,
         sim_s: torch.Tensor,
         sim_t: torch.Tensor,
+        candidates_per_anchor: int = 1,
         validation: bool = False,
         **kwargs,
     ) -> torch.Tensor:
@@ -73,8 +74,9 @@ class KLD(DistilLoss):
         lightning_module: LightningModule,
         projected_features: torch.Tensor,
         teacher_features: torch.Tensor,
-        pos_projected_features: torch.Tensor = None,
-        pos_teacher_features: torch.Tensor = None,
+        hyp_projected_features: torch.Tensor = None,
+        hyp_teacher_features: torch.Tensor = None,
+        candidates_per_anchor: int = 1,
         validation: bool = False,
         **kwargs,
     ) -> torch.Tensor:
@@ -85,12 +87,13 @@ class KLD(DistilLoss):
         sim_s, sim_t = self.make_features(
             projected_features=projected_features,
             teacher_features=teacher_features,
-            pos_projected_features=pos_projected_features,
-            pos_teacher_features=pos_teacher_features,
+            hyp_projected_features=hyp_projected_features,
+            hyp_teacher_features=hyp_teacher_features,
         )
         kl_loss, loss_dict = self.compute_loss(
             sim_s=sim_s,
             sim_t=sim_t,
+            candidates_per_anchor=candidates_per_anchor,
             validation=validation,
         )
 

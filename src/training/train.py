@@ -69,6 +69,7 @@ if __name__ == "__main__":
         num_sanity_val_steps=0,
         callbacks=[modelcheckpoint, lr_monitor],
         strategy=DeepSpeedStrategy(config=deepspeed_config),
+        use_distributed_sampler=False,
         logger=WandbLogger(
             name=os.path.basename(args.output_dir),
             project="distillation",
