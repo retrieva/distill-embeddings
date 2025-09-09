@@ -9,11 +9,11 @@ module load cuda cudnn nccl gcc
 
 nvidia-smi
 export SSL_CERT_FILE=$(uv run python -c "import certifi; print(certifi.where())")
-
+echo $CUDA_VISIBLE_DEVICES
 for loss_type in "kld"; do
     for lr in 1e-4; do
         for distill_weight in 0.98;do
-            uv run python -m src.training.train \
+             uv run python -m src.training.train \
                 --student_model nomic-ai/modernbert-embed-base-unsupervised \
                 --teacher_model Qwen/Qwen3-Embedding-4B \
                 --data_size 1794545 \
@@ -29,7 +29,7 @@ for loss_type in "kld"; do
                 --taid_alpha 5e-04 \
                 --loss_type "$loss_type" \
                 --add_prefix True \
-                --gradient_checkpointing True \
+                --gradient_checkpointing False \
                 --distill_weight "$distill_weight" \
                 --lr "$lr"
         done
