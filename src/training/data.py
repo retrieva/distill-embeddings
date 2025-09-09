@@ -51,6 +51,7 @@ PREFIX_MAP = {
 
 @dataclass
 class Batch:
+
     anc: list[BatchEncoding]
     pos: list[BatchEncoding]
     teacher_features: list[torch.Tensor]
@@ -162,8 +163,6 @@ class TaskBatchDataset(Dataset):
                 it["neg_features"] = it["neg_features"][:K]
 
         return items
-
-
 @dataclass
 class DataCollatorForContrastiveDistill:
     tokenizer: PreTrainedTokenizer
@@ -185,6 +184,7 @@ class DataCollatorForContrastiveDistill:
     def __call__(self, samples):
         if len(samples) == 1 and isinstance(samples[0], list):
             samples = samples[0]
+
 
         # rank スライス
         rank = get_rank_safe()
@@ -229,6 +229,7 @@ class DataCollatorForContrastiveDistill:
         else:
             neg_tokenized_per_slot = []  # 空でOK
             neg_features = []  # 空でOK
+            
 
         return Batch(
             anc=[self.preprocess(list(a)) for a in divide(self.num_chunk, anc_text)],
@@ -271,6 +272,7 @@ class DataModuleForDistill(L.LightningDataModule):
                 disable_instruction=("gte" in str(self.data_dir)),
                 add_prefix=add_prefix,
                 num_chunk=4,
+
                 per_rank_batch_size=self.per_rank_batch_size,
             )
             self.collate_fn_val = DataCollatorForContrastiveDistill(
@@ -321,8 +323,10 @@ class DataModuleForDistill(L.LightningDataModule):
         self.train_batches_ds = TaskBatchDataset(
             datasets["train"],
             embeddings,
+
             per_rank_batch_size=self.per_rank_batch_size,
             world_size=world_size,
+
             drop_last=True,
             shuffle_within_task=True,
             shuffle_task_batches=True,
@@ -331,8 +335,10 @@ class DataModuleForDistill(L.LightningDataModule):
         self.val_batches_ds = TaskBatchDataset(
             datasets["test"],
             embeddings,
+
             per_rank_batch_size=self.eval_batch_size,
             world_size=world_size,
+
             drop_last=True,
             shuffle_within_task=False,
             shuffle_task_batches=False,

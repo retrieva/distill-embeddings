@@ -200,14 +200,12 @@ class KDLoss(nn.Module):
         **kwargs,
     ) -> LossOutput:
         loss_dict = {}
-
         anc_s, anc_t, pos_s, cand_s_flat, cand_t_flat, C = build_candidates_flat(
             lightning_module,
             batch,
             self.use_pos,
             self.use_neg,
         )
-
         distill_loss_dict = self.distil_loss_fn(
             lightning_module=lightning_module,
             projected_features=anc_s,
