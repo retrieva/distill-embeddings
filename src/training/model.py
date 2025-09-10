@@ -168,7 +168,7 @@ class SentEmb(L.LightningModule):
                 self.student_model.prompts = model_prompts
             # MTEB evaluation
             output_folder = self.args.output_dir / "mteb_eval"
-            tasks = mteb.get_benchmark("MTEB(eng,v2)").tasks
+            tasks = mteb.get_benchmark("MTEB(eng, v2)").tasks
             evaluation = mteb.MTEB(
                 tasks=tasks,
                 # tasks=self.on_eval_tasks,
