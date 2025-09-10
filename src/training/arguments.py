@@ -17,7 +17,11 @@ def parse_args():
     data_args.add_argument("--data_dir", type=str, default="data", help="path to data dir")
     data_args.add_argument("--data_size", type=str, required=True, help="data size")
     data_args.add_argument(
-        "--data_name", type=str, default="gte", choices=["gte", "triplet", "gte_plus"], help="name of the data"
+        "--data_name",
+        type=str,
+        default="gte",
+        choices=["gte", "triplet", "gte_plus", "gte_en_plus_w_neg"],
+        help="name of the data",
     )
     data_args.add_argument(
         "--language", type=str, default="eng", choices=["eng", "jpn"], help="language for experiment"
