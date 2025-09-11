@@ -55,7 +55,11 @@ if __name__ == "__main__":
     )
 
     modelcheckpoint = ModelCheckpoint(
-        dirpath=args.output_dir / "checkpoints", filename="{epoch:02d}", every_n_epochs=1, save_top_k=-1
+        dirpath=args.output_dir / "checkpoints",
+        filename="{epoch:02d}",
+        every_n_epochs=1,
+        save_top_k=-1,
+        save_on_train_epoch_end=True,
     )
     lr_monitor = LearningRateMonitor(logging_interval="step")
     # Decide strategy: default to plain Lightning on single GPU, DeepSpeed on multi-GPU,
