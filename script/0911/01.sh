@@ -45,6 +45,8 @@ ADD_PREFIX=${ADD_PREFIX:-True}
 PROJECT=${PROJECT:-"distillation"}
 REUSE_CACHED=${REUSE_CACHED:-}
 CACHED_ONLY=${CACHED_ONLY:-}
+ENTITY=${ENTITY:-}
+RESUME_MODE=${RESUME_MODE:-}
 
 usage() {
   cat <<USAGE
@@ -75,6 +77,8 @@ extra=()
 [[ -n "$EPOCH" ]] && extra+=(--epoch "$EPOCH")
 [[ -n "$REUSE_CACHED" ]] && extra+=(--reuse_cached)
 [[ -n "$CACHED_ONLY" ]] && extra+=(--cached_only)
+[[ -n "$ENTITY" ]] && extra+=(--entity "$ENTITY")
+[[ -n "$RESUME_MODE" ]] && extra+=(--resume_mode "$RESUME_MODE")
 
 uv run python -m src.evaluation.posthoc_eval_batch \
   --root "$ROOT" \

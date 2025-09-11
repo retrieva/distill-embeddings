@@ -126,6 +126,20 @@ def _load_wandb_config(output_base: Path) -> dict:
         return {}
 
 
+def _infer_wandb_entity_project(output_base: Path) -> tuple[str | None, str | None]:
+    """Infer W&B entity and project from wandb-metadata.json if available."""
+    meta = output_base / "wandb" / "latest-run" / "files" / "wandb-metadata.json"
+    if not meta.exists():
+        return None, None
+    try:
+        data = json.loads(meta.read_text())
+        ent = data.get("entity")
+        proj = data.get("project")
+        return ent, proj
+    except Exception:
+        return None, None
+
+
 def _extract_student_state_dict(full_sd: dict) -> dict:
     out = {}
     for k, v in full_sd.items():
@@ -242,9 +256,11 @@ def run_eval_and_update_wandb(
     num_workers: int | None,
     add_prefix: bool | None,
     project: str,
+    entity: str | None = None,
     student_model: str | None = None,
     reuse_cached: bool = False,
     cached_only: bool = False,
+    resume_mode: str = "must",
 ):
     # Load model only if we will evaluate; cached_only mode skips model load
     model = None
@@ -322,7 +338,20 @@ def run_eval_and_update_wandb(
             "Pass --run_id explicitly or set WANDB_RUN_ID."
         )
 
-    wandb.init(project=project, id=run_id, resume="must")
+    # Resolve entity/project from metadata if not provided
+    meta_entity, meta_project = _infer_wandb_entity_project(output_base)
+    ent = entity or os.environ.get("WANDB_ENTITY") or meta_entity
+    proj = project or meta_project or project
+
+    try:
+        wandb.init(project=proj, entity=ent, id=run_id, resume=resume_mode, dir=str(output_base))
+    except Exception as e:
+        # Helpful diagnostics
+        raise RuntimeError(
+            f"wandb.init failed with resume={resume_mode}, project={proj}, entity={ent}, id={run_id}: {e}. "
+            "If this is an existing cloud run, ensure the correct entity/project. "
+            "Otherwise set --resume_mode allow to create if missing."
+        )
     wandb.run.summary.update(final_summary)
     print(f"Updated W&B summary for run {run_id}")
     for k, v in sorted(final_summary.items()):
@@ -354,9 +383,11 @@ def main():
         "--add_prefix", type=lambda x: x.lower() == "true", default=None, help="Force add_prefix True/False"
     )
     p.add_argument("--project", type=str, default="distillation", help="W&B project name")
+    p.add_argument("--entity", type=str, default=None, help="W&B entity (user or team)")
     p.add_argument("--student_model", type=str, default=None, help="Override base student model (for DS ckpts without W&B config)")
     p.add_argument("--reuse_cached", action="store_true", help="Reuse cached MTEB results under mteb_eval instead of recomputing")
     p.add_argument("--cached_only", action="store_true", help="Do not run evaluation; only read existing mteb_eval results and push to W&B")
+    p.add_argument("--resume_mode", type=str, default="must", choices=["must", "allow"], help="W&B resume behavior")
     args = p.parse_args()
 
     run_eval_and_update_wandb(
@@ -368,9 +399,11 @@ def main():
         num_workers=args.num_workers,
         add_prefix=args.add_prefix,
         project=args.project,
+        entity=args.entity,
         student_model=args.student_model,
         reuse_cached=args.reuse_cached,
         cached_only=args.cached_only,
+        resume_mode=args.resume_mode,
     )
 
 
