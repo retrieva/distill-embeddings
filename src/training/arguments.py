@@ -61,6 +61,23 @@ def parse_args():
     training_args.add_argument(
         "--gradient_checkpointing", type=str2bool, default=False, help="use gradient checkpointing"
     )
+    # Strategy / Precision
+    training_args.add_argument(
+        "--strategy",
+        type=str,
+        default="auto",
+        choices=["auto", "deepspeed"],
+        help=(
+            "Training strategy. 'auto' uses plain Lightning on single GPU and DeepSpeed when WORLD_SIZE>1; "
+            "set 'deepspeed' to force DeepSpeed even on a single GPU."
+        ),
+    )
+    training_args.add_argument(
+        "--zero_stage", type=int, default=2, choices=[1, 2, 3], help="DeepSpeed ZeRO stage when using deepspeed"
+    )
+    training_args.add_argument(
+        "--precision", type=str, default="bf16-mixed", help="Lightning precision (e.g., bf16-mixed, 16-mixed, 32-true)"
+    )
 
     # --- Loss & Distillation Arguments ---
     loss_args = parser.add_argument_group("Loss & Distillation Arguments")

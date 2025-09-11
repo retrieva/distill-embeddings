@@ -57,24 +57,32 @@ if __name__ == "__main__":
         dirpath=args.output_dir / "checkpoints", filename="{epoch:02d}", every_n_epochs=1, save_top_k=-1
     )
     lr_monitor = LearningRateMonitor(logging_interval="step")
-    deepspeed_config = {
-        "zero_optimization": {"stage": 2},
-        "train_micro_batch_size_per_gpu": args.batch_size,
-        "activation_checkpointing": {
-            "partition_activations": True,
-            "contiguous_memory_optimization": False,
-            "cpu_checkpointing": False,
-        },
-    }
+    # Decide strategy: default to plain Lightning on single GPU, DeepSpeed on multi-GPU,
+    # unless user explicitly forces DeepSpeed via --strategy deepspeed
+    env_world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    use_ds = (args.strategy == "deepspeed") or (args.strategy == "auto" and env_world_size > 1)
+    strategy = None
+    if use_ds:
+        deepspeed_config = {
+            "zero_optimization": {"stage": int(args.zero_stage)},
+            "train_micro_batch_size_per_gpu": args.batch_size,
+            "activation_checkpointing": {
+                "partition_activations": True,
+                "contiguous_memory_optimization": False,
+                "cpu_checkpointing": False,
+            },
+        }
+        strategy = DeepSpeedStrategy(config=deepspeed_config)
+
     trainer = L.Trainer(
         devices="auto",
         max_epochs=args.num_epochs,
         val_check_interval=args.val_check_interval,
         log_every_n_steps=args.log_every_n_steps,
-        precision="bf16-mixed",
+        precision=args.precision,
         num_sanity_val_steps=0,
         callbacks=[modelcheckpoint, lr_monitor],
-        strategy=DeepSpeedStrategy(config=deepspeed_config),
+        strategy=strategy or "auto",
         use_distributed_sampler=False,
         logger=WandbLogger(
             name=os.path.basename(args.output_dir),
