@@ -37,6 +37,7 @@ MAXLEN=512
 LANG="eng"
 LOSS="ckd"
 LR="1e-4"
+ADD_PREFIX=false
 
 # Optional: allow manual override as first arg
 if [ "${1:-}" != "" ]; then
@@ -50,7 +51,15 @@ BASE="output/result/${STUDENT//\//_}/${TEACHER//\//_}/${DATA_SIZE}"
 if [ -n "${CKPT_OVERRIDE}" ]; then
   CKPT="${CKPT_OVERRIDE}"
 else
-  CKPT=$(ls -1t ${BASE}/${DATA_NAME}_e${EPOCHS}_bs*_wsd*_${LOSS}*/last.ckpt 2>/dev/null | head -n 1 || true)
+  LRNUM=$(uv run python -c "print(float('${LR}'))")
+  CAND_DIRS=$(ls -1dt ${BASE}/${DATA_NAME}_e${EPOCHS}_bs*_wsd${LRNUM}_${LOSS}*/ 2>/dev/null || true)
+  if [ "${ADD_PREFIX}" = "false" ]; then
+    CAND_DIRS=$(printf '%s\n' ${CAND_DIRS} | grep -v '_prefix/$' || true)
+  else
+    CAND_DIRS=$(printf '%s\n' ${CAND_DIRS} | grep '_prefix/$' || true)
+  fi
+  RUN_DIR=$(printf '%s\n' ${CAND_DIRS} | head -n 1 || true)
+  CKPT="${RUN_DIR%/}/last.ckpt"
 fi
 if [ -z "${CKPT}" ]; then
   LRNUM=$(uv run python -c "print(float('${LR}'))")
