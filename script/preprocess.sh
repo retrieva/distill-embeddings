@@ -18,4 +18,5 @@ uv run python -m src.data_processing.finweb.encode \
     --teacher_model "Qwen/Qwen3-Embedding-4B" \
     --long_batch_size 2 \
     --short_batch_size 64 \
+    --threshold 2048 \
     --max_length 4096
