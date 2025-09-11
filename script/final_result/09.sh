@@ -44,8 +44,8 @@ for loss_type in "kld"; do
                 --taid_alpha 5e-04 \
                 --loss_type "$loss_type" \
                 --add_prefix True \
-                --gradient_checkpointing True \
-                --chunk_parts 16 \
+                --gradient_checkpointing False \
+                --chunk_parts 4 \
                 --distill_weight "$distill_weight" \
                 --lr "$lr"
         done
