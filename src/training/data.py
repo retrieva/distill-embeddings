@@ -1,7 +1,7 @@
 import logging
-import time
 import os
 import random
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 
@@ -52,7 +52,6 @@ PREFIX_MAP = {
 
 @dataclass
 class Batch:
-
     anc: list[BatchEncoding]
     pos: list[BatchEncoding]
     teacher_features: list[torch.Tensor]
@@ -94,13 +93,16 @@ class TaskBatchDataset(Dataset):
         self.world_size = world_size
         self.global_batch_size = per_rank_batch_size * world_size
         self.max_effective_pairs_per_rank = (
-            int(max_effective_pairs_per_rank) if max_effective_pairs_per_rank and max_effective_pairs_per_rank > 0 else None
+            int(max_effective_pairs_per_rank)
+            if max_effective_pairs_per_rank and max_effective_pairs_per_rank > 0
+            else None
         )
         self.drop_last = drop_last
         self.shuffle_within_task = shuffle_within_task
         self.shuffle_task_batches = shuffle_task_batches
         self.seed = seed
         self._batches = []
+        self._neg_len = None  # lazily prepared cache of negatives length per sample
         self.rebuild_batches(0)
 
     def _group_indices_by_task(self):
@@ -110,9 +112,7 @@ class TaskBatchDataset(Dataset):
         task_indices = defaultdict(list)
         for i, s in enumerate(subsets_col):
             task_indices[s].append(i)
-        logger.info(
-            f"Grouped {len(subsets_col)} rows into {len(task_indices)} subsets in {time.time() - t0:.1f}s"
-        )
+        logger.info(f"Grouped {len(subsets_col)} rows into {len(task_indices)} subsets in {time.time() - t0:.1f}s")
         return task_indices
 
     def rebuild_batches(self, epoch: int):
@@ -121,6 +121,23 @@ class TaskBatchDataset(Dataset):
         if not hasattr(self, "_grouped_cache") or self._grouped_cache is None:
             self._grouped_cache = self._group_indices_by_task()
         grouped = self._grouped_cache
+        # Prepare neg length cache once to avoid per-row access below
+        if self._neg_len is None:
+            t0 = time.time()
+            cols = set(self.hf_dataset.column_names)
+            if "neg_num" in cols:
+                vals = self.hf_dataset["neg_num"]
+                neg_len = [int(v) if isinstance(v, (int, np.integer)) else 0 for v in vals]
+            elif "neg_emb_idx" in cols:
+                vals = self.hf_dataset["neg_emb_idx"]
+                neg_len = [len(v) if isinstance(v, (list, tuple)) else 0 for v in vals]
+            elif "neg" in cols:
+                vals = self.hf_dataset["neg"]
+                neg_len = [len(v) if isinstance(v, (list, tuple)) else 0 for v in vals]
+            else:
+                neg_len = [0] * len(self.hf_dataset)
+            self._neg_len = np.asarray(neg_len, dtype=np.int32)
+            logger.info(f"Prepared neg_len cache in {time.time() - t0:.1f}s")
         batches = []
         for _, idxs in grouped.items():
             if self.shuffle_within_task:
@@ -135,10 +152,7 @@ class TaskBatchDataset(Dataset):
                 eff_per_rank = self.per_rank_batch_size
                 if self.max_effective_pairs_per_rank is not None and len(window) > 0:
                     # このウィンドウ内の最小K（全サンプルが共通して持つneg数）
-                    try:
-                        k_min = min(len(self.hf_dataset[i].get("neg") or []) for i in window)
-                    except Exception:
-                        k_min = 0
+                    k_min = int(self._neg_len[window].min()) if len(window) > 0 else 0
                     C = 1 + max(0, k_min)
                     if C > 1:
                         eff_per_rank = max(1, min(self.per_rank_batch_size, self.max_effective_pairs_per_rank // C))
@@ -194,6 +208,8 @@ class TaskBatchDataset(Dataset):
                 it["neg_features"] = it["neg_features"][:K]
 
         return items
+
+
 @dataclass
 class DataCollatorForContrastiveDistill:
     tokenizer: PreTrainedTokenizer
@@ -215,7 +231,6 @@ class DataCollatorForContrastiveDistill:
     def __call__(self, samples):
         if len(samples) == 1 and isinstance(samples[0], list):
             samples = samples[0]
-
 
         # rank スライス（バッチ毎に可変長対応）
         rank = get_rank_safe()
@@ -262,7 +277,6 @@ class DataCollatorForContrastiveDistill:
         else:
             neg_tokenized_per_slot = []  # 空でOK
             neg_features = []  # 空でOK
-            
 
         return Batch(
             anc=[self.preprocess(list(a)) for a in divide(self.num_chunk, anc_text)],
@@ -301,7 +315,9 @@ class DataModuleForDistill(L.LightningDataModule):
         self.seed = seed
         self.chunk_parts = chunk_parts
         self.max_effective_pairs_per_rank = (
-            int(max_effective_pairs_per_rank) if max_effective_pairs_per_rank and max_effective_pairs_per_rank > 0 else None
+            int(max_effective_pairs_per_rank)
+            if max_effective_pairs_per_rank and max_effective_pairs_per_rank > 0
+            else None
         )
 
         if ("triplet" in str(self.data_dir)) or ("gte" in str(self.data_dir)):
@@ -311,7 +327,6 @@ class DataModuleForDistill(L.LightningDataModule):
                 disable_instruction=("gte" in str(self.data_dir)),
                 add_prefix=add_prefix,
                 num_chunk=self.chunk_parts,
-
                 per_rank_batch_size=self.per_rank_batch_size,
             )
             self.collate_fn_val = DataCollatorForContrastiveDistill(
@@ -362,11 +377,9 @@ class DataModuleForDistill(L.LightningDataModule):
         self.train_batches_ds = TaskBatchDataset(
             datasets["train"],
             embeddings,
-
             per_rank_batch_size=self.per_rank_batch_size,
             world_size=world_size,
             max_effective_pairs_per_rank=self.max_effective_pairs_per_rank,
-
             drop_last=True,
             shuffle_within_task=True,
             shuffle_task_batches=True,
@@ -375,11 +388,9 @@ class DataModuleForDistill(L.LightningDataModule):
         self.val_batches_ds = TaskBatchDataset(
             datasets["test"],
             embeddings,
-
             per_rank_batch_size=self.eval_batch_size,
             world_size=world_size,
             max_effective_pairs_per_rank=self.max_effective_pairs_per_rank,
-
             drop_last=True,
             shuffle_within_task=False,
             shuffle_task_batches=False,
