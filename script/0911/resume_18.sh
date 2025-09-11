@@ -7,6 +7,11 @@
 
 set -eu
 
+# Ensure working directory is the repo root (distill-embeddings)
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+REPO_ROOT=$(cd "${SCRIPT_DIR}/../.." && pwd)
+cd "${REPO_ROOT}"
+
 module load cuda cudnn nccl gcc
 nvidia-smi
 
@@ -35,9 +40,20 @@ LR="1e-4"
 TAID_T_START="0.7"
 TAID_ALPHA="5e-04"
 
+# Optional: allow manual override as first arg
+if [ "${1:-}" != "" ]; then
+  CKPT_OVERRIDE="$1"
+else
+  CKPT_OVERRIDE=""
+fi
+
 # Locate last.ckpt robustly
 BASE="output/result/${STUDENT//\//_}/${TEACHER//\//_}/${DATA_SIZE}"
-CKPT=$(ls -1t ${BASE}/${DATA_NAME}_e${EPOCHS}_bs*_wsd*_${LOSS}*/last.ckpt 2>/dev/null | head -n 1 || true)
+if [ -n "${CKPT_OVERRIDE}" ]; then
+  CKPT="${CKPT_OVERRIDE}"
+else
+  CKPT=$(ls -1t ${BASE}/${DATA_NAME}_e${EPOCHS}_bs*_wsd*_${LOSS}*/last.ckpt 2>/dev/null | head -n 1 || true)
+fi
 if [ -z "${CKPT}" ]; then
   LRNUM=$(uv run python -c "print(float('${LR}'))")
   GBS=$(( BATCH_SIZE * ${WORLD_SIZE:-1} ))
@@ -91,4 +107,3 @@ uv run python -m src.training.train \
   --lr "${LR}" \
   --ckpt_path "${CKPT}" \
   $( [ -n "${RUN_ID}" ] && printf %s "--your_run_id ${RUN_ID}" )
-
