@@ -13,13 +13,14 @@ for loss_type in "kld"; do
         --teacher_model Qwen/Qwen3-Embedding-4B \
         --data_size 100 \
         --data_name gte_plus \
-        --batch_size 8 \
+        --batch_size 4 \
         --num_epochs 1 \
         --max_length 4096 \
         --language eng \
-        --get_id_iso \
         --use_pos \
-        --add_prefix True \
+        --mteb_eval \
+        --add_prefix False \
+        --gradient_checkpointing False \
         --loss_type "$loss_type" 
 done
-        # --mteb_eval \
+        # --get_id_iso \
