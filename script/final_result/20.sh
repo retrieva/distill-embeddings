@@ -24,6 +24,7 @@ for loss_type in "infocse"; do
                 --language eng \
                 --get_id_iso \
                 --mteb_eval \
+                --use_pos \
                 --taid_t_start 0.7 \
                 --taid_alpha 5e-04 \
                 --loss_type "$loss_type" \
