@@ -31,14 +31,14 @@ for loss_type in "kld"; do
                 --teacher_model Qwen/Qwen3-Embedding-4B \
                 --data_size 1794550 \
                 --data_name gte_en_plus_w_neg \
-                --batch_size 128 \
+                --batch_size 64 \
                 --num_epochs 3 \
                 --max_length 512 \
                 --language eng \
                 --get_id_iso \
                 --use_pos \
                 --use_neg \
-                --max_effective_pairs_per_rank 128 \
+                --max_effective_pairs_per_rank 64 \
                 --mteb_eval \
                 --taid_t_start 0.7 \
                 --taid_alpha 5e-04 \
