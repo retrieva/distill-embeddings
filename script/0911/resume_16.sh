@@ -57,11 +57,34 @@ if [ -z "${CKPT}" ]; then
   GBS=$(( BATCH_SIZE * ${WORLD_SIZE:-1} ))
   CKPT="${BASE}/${DATA_NAME}_e${EPOCHS}_bs${GBS}_wsd${LRNUM}_${LOSS}/last.ckpt"
 fi
+OUT_DIR_BASE="${BASE}/${DATA_NAME}_e${EPOCHS}_bs*_wsd*_${LOSS}*"
+STRATEGY_ARGS=""
 if [ ! -f "${CKPT}" ]; then
-  echo "last.ckpt not found. Looked at: ${CKPT}"
-  exit 1
+  echo "last.ckpt is not a regular file (Looked at: ${CKPT})"
+  echo "Trying to resume from a DeepSpeed-style directory checkpoint (if available)..."
+  if [ -d "${CKPT}" ]; then
+    DS_DIR="${CKPT}"
+    CKPT="${DS_DIR}"
+    STRATEGY_ARGS="--strategy deepspeed"
+  else
+    DS_DIR=$(ls -1dt ${OUT_DIR_BASE}/checkpoints/* 2>/dev/null | head -n 1 || true)
+    if [ -z "${DS_DIR}" ]; then
+      DS_DIR=$(ls -1dt ${OUT_DIR_BASE}/checkpoints 2>/dev/null | head -n 1 || true)
+    fi
+  fi
+  if [ -z "${DS_DIR}" ]; then
+    echo "No DeepSpeed checkpoint directory found either. Cannot resume."
+    exit 1
+  fi
+  if [ -z "${STRATEGY_ARGS}" ]; then
+    echo "Found DS checkpoint dir: ${DS_DIR}"
+    CKPT="${DS_DIR}"
+    STRATEGY_ARGS="--strategy deepspeed"
+  fi
+  OUT_DIR=$(dirname "${DS_DIR}")
+else
+  OUT_DIR=$(dirname "${CKPT}")
 fi
-OUT_DIR=$(dirname "${CKPT}")
 
 # Try to infer W&B run id
 get_run_id() {
@@ -101,5 +124,6 @@ uv run python -m src.training.train \
   --gradient_checkpointing False \
   --distill_weight 1.0 \
   --lr "${LR}" \
-  --ckpt_path "${CKPT}" \
+  ${STRATEGY_ARGS} \
+  $( [ -e "${CKPT:-/nonexistent}" ] && printf %s "--ckpt_path ${CKPT}" ) \
   $( [ -n "${RUN_ID}" ] && printf %s "--your_run_id ${RUN_ID}" )
