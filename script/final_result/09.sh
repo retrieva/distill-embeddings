@@ -38,6 +38,7 @@ for loss_type in "kld"; do
                 --get_id_iso \
                 --use_pos \
                 --use_neg \
+                --max_effective_pairs_per_rank 128 \
                 --mteb_eval \
                 --taid_t_start 0.7 \
                 --taid_alpha 5e-04 \
