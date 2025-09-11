@@ -1,4 +1,5 @@
 import logging
+import time
 import os
 import random
 from collections import defaultdict
@@ -103,14 +104,23 @@ class TaskBatchDataset(Dataset):
         self.rebuild_batches(0)
 
     def _group_indices_by_task(self):
+        # Faster: avoid per-row __getitem__; read the column once
+        t0 = time.time()
+        subsets_col = self.hf_dataset["subset"]  # list[str]
         task_indices = defaultdict(list)
-        for i in range(len(self.hf_dataset)):
-            task_indices[self.hf_dataset[i]["subset"]].append(i)
+        for i, s in enumerate(subsets_col):
+            task_indices[s].append(i)
+        logger.info(
+            f"Grouped {len(subsets_col)} rows into {len(task_indices)} subsets in {time.time() - t0:.1f}s"
+        )
         return task_indices
 
     def rebuild_batches(self, epoch: int):
         rng = random.Random(self.seed + epoch)
-        grouped = self._group_indices_by_task()
+        # Cache grouping to avoid recomputing every epoch
+        if not hasattr(self, "_grouped_cache") or self._grouped_cache is None:
+            self._grouped_cache = self._group_indices_by_task()
+        grouped = self._grouped_cache
         batches = []
         for _, idxs in grouped.items():
             if self.shuffle_within_task:
