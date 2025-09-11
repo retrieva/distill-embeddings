@@ -255,6 +255,7 @@ class DataModuleForDistill(L.LightningDataModule):
         max_length: int = 4096,
         add_prefix: bool = False,
         seed: int = 42,
+        chunk_parts: int = 4,
     ):
         super().__init__()
         self.data_dir = data_dir
@@ -264,6 +265,7 @@ class DataModuleForDistill(L.LightningDataModule):
         self.num_workers = num_workers
         self.tokenizer = student_tokenizer
         self.seed = seed
+        self.chunk_parts = chunk_parts
 
         if ("triplet" in str(self.data_dir)) or ("gte" in str(self.data_dir)):
             self.collate_fn_train = DataCollatorForContrastiveDistill(
@@ -271,7 +273,7 @@ class DataModuleForDistill(L.LightningDataModule):
                 max_length=max_length,
                 disable_instruction=("gte" in str(self.data_dir)),
                 add_prefix=add_prefix,
-                num_chunk=4,
+                num_chunk=self.chunk_parts,
 
                 per_rank_batch_size=self.per_rank_batch_size,
             )
@@ -280,7 +282,7 @@ class DataModuleForDistill(L.LightningDataModule):
                 max_length=max_length,
                 disable_instruction=("gte" in str(self.data_dir)),
                 add_prefix=add_prefix,
-                num_chunk=4,
+                num_chunk=self.chunk_parts,
                 per_rank_batch_size=self.eval_batch_size,  # ← val 用
             )
         else:

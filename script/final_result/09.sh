@@ -44,6 +44,7 @@ for loss_type in "kld"; do
                 --loss_type "$loss_type" \
                 --add_prefix True \
                 --gradient_checkpointing True \
+                --chunk_parts 16 \
                 --distill_weight "$distill_weight" \
                 --lr "$lr"
         done

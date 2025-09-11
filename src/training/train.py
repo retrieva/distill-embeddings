@@ -51,6 +51,7 @@ if __name__ == "__main__":
         num_workers=args.num_workers,
         max_length=args.max_length,
         add_prefix=args.add_prefix,
+        chunk_parts=args.chunk_parts,
     )
 
     modelcheckpoint = ModelCheckpoint(

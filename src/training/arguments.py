@@ -44,6 +44,12 @@ def parse_args():
     data_args.add_argument("--num_workers", type=int, default=4, help="number of workers for data loader")
     # Use str2bool to correctly handle values like "False" from CLI
     data_args.add_argument("--add_prefix", type=str2bool, default=True, help="add prefix to input text")
+    data_args.add_argument(
+        "--chunk_parts",
+        type=int,
+        default=4,
+        help="Split each batch into this many chunks to reduce peak memory (affects tokenization/forward).",
+    )
 
     # --- Training Arguments ---
     training_args = parser.add_argument_group("Training Arguments")
