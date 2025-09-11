@@ -77,6 +77,12 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size for evaluation.")
     parser.add_argument("--num_workers", type=int, default=4, help="Number of workers for data loading.")
     parser.add_argument("--benchmark_name", type=str, default="on_train_end_tasks", help="Name of the benchmark.")
-    parser.add_argument("--add_prefix", type=bool, default=True, help="Whether to add prefix to the input.")
+    # Parse bools from strings like "true"/"false"
+    parser.add_argument(
+        "--add_prefix",
+        type=lambda x: str(x).lower() in ("true", "1", "t", "y", "yes"),
+        default=True,
+        help="Whether to add prefix to the input.",
+    )
     args = parser.parse_args()
     main(args)
