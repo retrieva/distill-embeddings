@@ -9,6 +9,14 @@ import torch
 from datasets import Dataset, load_dataset
 from sentence_transformers import SentenceTransformer
 
+# Use common encode utils to enable checkpoint/resume and optional multi-GPU
+from src.data_processing.encode_utils import (
+    encode_with_checkpoint,
+    encode_with_checkpoint_multigpu,
+    get_available_gpus,
+    setup_multiprocess_pool,
+)
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -91,50 +99,104 @@ def main(args):
     logger.info(f"Text length statistics: {stats}")
     long_texts = [text for text in texts if len(text) > args.threshold]
     short_texts = [text for text in texts if len(text) <= args.threshold]
-    teacher_model = SentenceTransformer(args.teacher_model).bfloat16()
-    logger.info(f"Loaded teacher model: {args.teacher_model}")
 
-    with torch.no_grad():
-        logger.info("-- Check OOM --")
-        teacher_model.encode(
-            long_texts[:2],
-            show_progress_bar=True,
-            batch_size=args.long_batch_size,
-            max_length=args.max_length,
-            normalize_embeddings=True,
-        )
-        teacher_model.encode(
-            short_texts[:32],
-            show_progress_bar=True,
-            batch_size=args.short_batch_size,
-            max_length=args.max_length,
-            normalize_embeddings=True,
-        )
-        logger.info("-- Long Encode --")
-        # Iterate through the dataset and print each sample
-        long_teacher_features = teacher_model.encode(
-            long_texts,
-            show_progress_bar=True,
-            batch_size=args.long_batch_size,
-            max_length=args.max_length,
-        )
-        logger.info("-- Short Encode --")
-        short_teacher_features = teacher_model.encode(
-            short_texts,
-            show_progress_bar=True,
-            batch_size=args.short_batch_size,
-            max_length=args.max_length,
-        )
-    output_dataset = Dataset.from_dict({
-        "text": long_texts + short_texts,
-        "teacher_features": np.concatenate([long_teacher_features, short_teacher_features]),
-    })
+    # Prepare output + checkpoint directories now (so resume works immediately)
     output_path = (
         Path(args.output_dir)
         / f"{args.teacher_model.replace('/', '_')}_encoded"
         / f"{args.subset_name}_{args.sample_size if args.sample_size else 'full'}"
     )
     output_path.mkdir(parents=True, exist_ok=True)
+    checkpoint_dir = output_path / "checkpoints"
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    teacher_model = SentenceTransformer(args.teacher_model).bfloat16()
+    logger.info(f"Loaded teacher model: {args.teacher_model}")
+
+    # Multi-GPU setup (optional)
+    gpu_count = get_available_gpus()
+    use_multigpu = gpu_count > 1 and not getattr(args, "disable_multigpu", False)
+    logger.info(f"GPUs available: {gpu_count}; use_multigpu={use_multigpu}")
+    pool = setup_multiprocess_pool(teacher_model) if use_multigpu else None
+
+    dim = teacher_model.get_sentence_embedding_dimension()
+
+    with torch.no_grad():
+        logger.info("-- Check OOM --")
+        if len(long_texts) > 0:
+            teacher_model.encode(
+                long_texts[: args.long_batch_size * 2],
+                show_progress_bar=True,
+                batch_size=args.long_batch_size,
+                max_length=args.max_length,
+                normalize_embeddings=True,
+            )
+        if len(short_texts) > 0:
+            teacher_model.encode(
+                short_texts[: args.short_batch_size * 2],
+                show_progress_bar=True,
+                batch_size=args.short_batch_size,
+                max_length=args.max_length,
+                normalize_embeddings=True,
+            )
+
+        logger.info("-- Long Encode --")
+        if len(long_texts) > 0:
+            if use_multigpu:
+                long_teacher_features = encode_with_checkpoint_multigpu(
+                    teacher_model,
+                    long_texts,
+                    args.long_batch_size,
+                    checkpoint_dir / "long.pkl",
+                    args.max_length,
+                    pool,
+                )
+            else:
+                long_teacher_features = encode_with_checkpoint(
+                    teacher_model,
+                    long_texts,
+                    args.long_batch_size,
+                    checkpoint_dir / "long.pkl",
+                    args.max_length,
+                )
+        else:
+            long_teacher_features = np.empty((0, dim))
+
+        logger.info("-- Short Encode --")
+        if len(short_texts) > 0:
+            if use_multigpu:
+                short_teacher_features = encode_with_checkpoint_multigpu(
+                    teacher_model,
+                    short_texts,
+                    args.short_batch_size,
+                    checkpoint_dir / "short.pkl",
+                    args.max_length,
+                    pool,
+                )
+            else:
+                short_teacher_features = encode_with_checkpoint(
+                    teacher_model,
+                    short_texts,
+                    args.short_batch_size,
+                    checkpoint_dir / "short.pkl",
+                    args.max_length,
+                )
+        else:
+            short_teacher_features = np.empty((0, dim))
+
+    # Cleanup pool if used
+    if pool is not None:
+        teacher_model.stop_multi_process_pool(pool)
+
+    # Save in the original format: dataset with embedded features column
+    output_dataset = Dataset.from_dict(
+        {
+            "text": long_texts + short_texts,
+            "teacher_features": np.concatenate([long_teacher_features, short_teacher_features])
+            if len(long_teacher_features) and len(short_teacher_features)
+            else (long_teacher_features if len(long_teacher_features) else short_teacher_features),
+        }
+    )
     output_dataset.save_to_disk(output_path)
     json.dump(stats, open(output_path / "stats.json", "w"), indent=4)
 
@@ -156,5 +218,6 @@ if __name__ == "__main__":
         help="Threshold for distinguishing long and short texts 文字数なのに注意",
     )
     parser.add_argument("--short_text_ratio", type=float, default=0.3, help="Ratio of short text samples")
+    parser.add_argument("--disable_multigpu", action="store_true", help="Disable multi-GPU processing")
     args = parser.parse_args()
     main(args)
