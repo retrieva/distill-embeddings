@@ -1,6 +1,16 @@
-#!/bin/bash
+#!/bin/sh
+#PJM -L rscgrp=b-batch
+#PJM -L gpu=1
+#PJM -L elapse=07:00:00
+#PJM -j
 
-uv run python src/data_processing/finweb/encode.py \
+module load cuda cudnn nccl gcc
+
+# GPU情報を表示
+nvidia-smi
+
+uv sync
+uv run python -m src.data_processing.finweb.encode \
     --data_name "hotchpotch/fineweb-2-edu-japanese" \
     --subset_name "fineweb" \
     --sample_size 1794545 \
