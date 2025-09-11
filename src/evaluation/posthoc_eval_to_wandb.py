@@ -244,6 +244,7 @@ def run_eval_and_update_wandb(
     project: str,
     student_model: str | None = None,
     reuse_cached: bool = False,
+    cached_only: bool = False,
 ):
     model, hp = _load_student_from_ckpt(ckpt_path, student_model)
 
@@ -277,24 +278,25 @@ def run_eval_and_update_wandb(
     else:
         raise ValueError(f"Unknown benchmark name: {benchmark_name}")
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        scores = evaluation.run(
-            model,
-            output_folder=output_folder,
-            num_workers=workers,
-            overwrite_results=not reuse_cached,
-            verbosity=1,
-            encode_kwargs={"batch_size": bsz},
-        )
-
-    # Combine fresh scores with any cached results to ensure completeness
     mteb_dict = _collect_cached_mteb_scores(output_folder)
-    for s in scores:
-        try:
-            mteb_dict[s.task_name] = s.get_score()
-        except Exception:
-            pass
+    scores = []
+    if not cached_only:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            scores = evaluation.run(
+                model,
+                output_folder=output_folder,
+                num_workers=workers,
+                overwrite_results=not reuse_cached,
+                verbosity=1,
+                encode_kwargs={"batch_size": bsz},
+            )
+        # Merge fresh scores on top of cached
+        for s in scores:
+            try:
+                mteb_dict[s.task_name] = s.get_score()
+            except Exception:
+                pass
     final_summary = {f"mteb_final/{k}": v for k, v in mteb_dict.items()}
 
     # WandB update
@@ -339,6 +341,7 @@ def main():
     p.add_argument("--project", type=str, default="distillation", help="W&B project name")
     p.add_argument("--student_model", type=str, default=None, help="Override base student model (for DS ckpts without W&B config)")
     p.add_argument("--reuse_cached", action="store_true", help="Reuse cached MTEB results under mteb_eval instead of recomputing")
+    p.add_argument("--cached_only", action="store_true", help="Do not run evaluation; only read existing mteb_eval results and push to W&B")
     args = p.parse_args()
 
     run_eval_and_update_wandb(
@@ -352,6 +355,7 @@ def main():
         project=args.project,
         student_model=args.student_model,
         reuse_cached=args.reuse_cached,
+        cached_only=args.cached_only,
     )
 
 
