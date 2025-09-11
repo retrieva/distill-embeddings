@@ -2,6 +2,8 @@
 #PJM -L rscgrp=b-batch-mig
 #PJM -L gpu=1
 #PJM -L elapse=20:00:00
+#PJM -j
+#PJM -o logs/0911/01.log
 
 
 # 0909/02
@@ -15,15 +17,19 @@ set -euo pipefail
 # Batch re-run MTEB and update W&B summary for many experiments.
 # Defaults match training layout: output/result/<student>/<teacher>/<data_size>/<code_name>
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Resolve repo root robustly whether this script lives in script/ or script/*/*
-if [ -d "${SCRIPT_DIR}/../src" ]; then
-  REPO_ROOT="${SCRIPT_DIR}/.."
-else
-  REPO_ROOT="${SCRIPT_DIR}/../.."
-fi
+# Many schedulers run a spooled copy of the script, so BASH_SOURCE points to a temp dir.
+# Prefer the submit working dir from the scheduler; fallback to current pwd.
+REPO_ROOT="${PJM_O_WORKDIR:-${SLURM_SUBMIT_DIR:-${PBS_O_WORKDIR:-$(pwd)}}}"
 cd "${REPO_ROOT}"
+
+# Add repo root to PYTHONPATH so `src` can be imported regardless of CWD quirks.
 export PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
+
+# Debug info
+echo "[DEBUG] REPO_ROOT=${REPO_ROOT}"
+echo "[DEBUG] PWD=$(pwd)"
+echo "[DEBUG] Has src? $(test -d src && echo yes || echo no)"
+echo "[DEBUG] posthoc_eval_batch.py exists? $(test -f src/evaluation/posthoc_eval_batch.py && echo yes || echo no)"
 
 # Default to the most commonly used pair under output/result
 ROOT=${ROOT:-"output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B"}
