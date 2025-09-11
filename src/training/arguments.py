@@ -1,6 +1,21 @@
 import argparse
 
 
+def str2bool(v: str) -> bool:
+    """Parse boolean-like strings to bool.
+
+    Accepts true/false variants like: true, false, 1, 0, yes, no, y, n.
+    """
+    if isinstance(v, bool):
+        return v
+    v = str(v).strip().lower()
+    if v in {"true", "1", "t", "y", "yes"}:
+        return True
+    if v in {"false", "0", "f", "n", "no"}:
+        return False
+    raise argparse.ArgumentTypeError(f"Boolean value expected, got: {v}")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Knowledge Distillation Experiment Arguments")
 
@@ -27,7 +42,8 @@ def parse_args():
         "--language", type=str, default="eng", choices=["eng", "jpn"], help="language for experiment"
     )
     data_args.add_argument("--num_workers", type=int, default=4, help="number of workers for data loader")
-    data_args.add_argument("--add_prefix", type=bool, default=True, help="add prefix to input text")
+    # Use str2bool to correctly handle values like "False" from CLI
+    data_args.add_argument("--add_prefix", type=str2bool, default=True, help="add prefix to input text")
 
     # --- Training Arguments ---
     training_args = parser.add_argument_group("Training Arguments")
@@ -41,8 +57,10 @@ def parse_args():
     training_args.add_argument(
         "--warmup_ratio", type=float, default=0.05, help="warmup ratio for learning rate scheduler"
     )
-    training_args.add_argument("--use_lora", type=bool, default=False, help="use LoRA for training")
-    training_args.add_argument("--gradient_checkpointing", type=bool, default=False, help="use gradient checkpointing")
+    training_args.add_argument("--use_lora", type=str2bool, default=False, help="use LoRA for training")
+    training_args.add_argument(
+        "--gradient_checkpointing", type=str2bool, default=False, help="use gradient checkpointing"
+    )
 
     # --- Loss & Distillation Arguments ---
     loss_args = parser.add_argument_group("Loss & Distillation Arguments")

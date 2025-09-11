@@ -19,6 +19,8 @@ from src.training.scheduler import get_scheduler
 
 PROMPT_MAP = {
     "none": "",
+    "query": "query: ",
+    "passage": "passage: ",
     "retrieval": "Given a question, retrieve passages that answer the question",
     "sts": "Retrieve semantically similar text",
     "classification": "Given a text, classify its topic",
