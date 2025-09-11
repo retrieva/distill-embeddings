@@ -84,6 +84,15 @@ def parse_args():
     training_args.add_argument(
         "--precision", type=str, default="bf16-mixed", help="Lightning precision (e.g., bf16-mixed, 16-mixed, 32-true)"
     )
+    training_args.add_argument(
+        "--max_effective_pairs_per_rank",
+        type=int,
+        default=0,
+        help=(
+            "Cap for B*C per rank to mitigate OOM when using negatives. "
+            "0 disables dynamic batch shrinking (default)."
+        ),
+    )
 
     # --- Loss & Distillation Arguments ---
     loss_args = parser.add_argument_group("Loss & Distillation Arguments")

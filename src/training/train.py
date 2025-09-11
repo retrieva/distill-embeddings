@@ -63,6 +63,7 @@ if __name__ == "__main__":
         max_length=args.max_length,
         add_prefix=args.add_prefix,
         chunk_parts=args.chunk_parts,
+        max_effective_pairs_per_rank=args.max_effective_pairs_per_rank,
     )
 
     modelcheckpoint = ModelCheckpoint(

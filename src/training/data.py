@@ -81,6 +81,7 @@ class TaskBatchDataset(Dataset):
         embeddings: np.ndarray,
         per_rank_batch_size: int,  # 変更: per-rank のBS
         world_size: int,  # 追加
+        max_effective_pairs_per_rank: int | None = None,  # 追加: 動的BS用の上限（B*C）
         drop_last=False,
         shuffle_within_task=True,
         shuffle_task_batches=True,
@@ -91,6 +92,9 @@ class TaskBatchDataset(Dataset):
         self.per_rank_batch_size = per_rank_batch_size
         self.world_size = world_size
         self.global_batch_size = per_rank_batch_size * world_size
+        self.max_effective_pairs_per_rank = (
+            int(max_effective_pairs_per_rank) if max_effective_pairs_per_rank and max_effective_pairs_per_rank > 0 else None
+        )
         self.drop_last = drop_last
         self.shuffle_within_task = shuffle_within_task
         self.shuffle_task_batches = shuffle_task_batches
@@ -111,12 +115,29 @@ class TaskBatchDataset(Dataset):
         for _, idxs in grouped.items():
             if self.shuffle_within_task:
                 rng.shuffle(idxs)
-            # ここが「グローバルBS」刻み
-            for j in range(0, len(idxs), self.global_batch_size):
-                chunk = idxs[j : j + self.global_batch_size]
-                if len(chunk) < self.global_batch_size and self.drop_last:
-                    continue
+            # 動的なグローバルBSで刻む
+            j = 0
+            N = len(idxs)
+            while j < N:
+                # まず最大サイズのプリウィンドウを見て K(min) を見積もる
+                pre_end = min(j + self.global_batch_size, N)
+                window = idxs[j:pre_end]
+                eff_per_rank = self.per_rank_batch_size
+                if self.max_effective_pairs_per_rank is not None and len(window) > 0:
+                    # このウィンドウ内の最小K（全サンプルが共通して持つneg数）
+                    try:
+                        k_min = min(len(self.hf_dataset[i].get("neg") or []) for i in window)
+                    except Exception:
+                        k_min = 0
+                    C = 1 + max(0, k_min)
+                    if C > 1:
+                        eff_per_rank = max(1, min(self.per_rank_batch_size, self.max_effective_pairs_per_rank // C))
+                group_size = eff_per_rank * self.world_size
+                chunk = idxs[j : min(j + group_size, N)]
+                if len(chunk) < group_size and self.drop_last:
+                    break
                 batches.append(chunk)
+                j += len(chunk)
         if self.shuffle_task_batches:
             rng.shuffle(batches)
         self._batches = batches
@@ -186,10 +207,12 @@ class DataCollatorForContrastiveDistill:
             samples = samples[0]
 
 
-        # rank スライス
+        # rank スライス（バッチ毎に可変長対応）
         rank = get_rank_safe()
-        start = rank * self.per_rank_batch_size
-        end = start + self.per_rank_batch_size
+        world_size = get_world_size_safe()
+        dynamic_per_rank = max(1, len(samples) // max(1, world_size))
+        start = rank * dynamic_per_rank
+        end = start + dynamic_per_rank
         samples = samples[start:end]
 
         # anc/pos（既存どおり）
@@ -256,6 +279,7 @@ class DataModuleForDistill(L.LightningDataModule):
         add_prefix: bool = False,
         seed: int = 42,
         chunk_parts: int = 4,
+        max_effective_pairs_per_rank: int | None = None,
     ):
         super().__init__()
         self.data_dir = data_dir
@@ -266,6 +290,9 @@ class DataModuleForDistill(L.LightningDataModule):
         self.tokenizer = student_tokenizer
         self.seed = seed
         self.chunk_parts = chunk_parts
+        self.max_effective_pairs_per_rank = (
+            int(max_effective_pairs_per_rank) if max_effective_pairs_per_rank and max_effective_pairs_per_rank > 0 else None
+        )
 
         if ("triplet" in str(self.data_dir)) or ("gte" in str(self.data_dir)):
             self.collate_fn_train = DataCollatorForContrastiveDistill(
@@ -328,6 +355,7 @@ class DataModuleForDistill(L.LightningDataModule):
 
             per_rank_batch_size=self.per_rank_batch_size,
             world_size=world_size,
+            max_effective_pairs_per_rank=self.max_effective_pairs_per_rank,
 
             drop_last=True,
             shuffle_within_task=True,
@@ -340,6 +368,7 @@ class DataModuleForDistill(L.LightningDataModule):
 
             per_rank_batch_size=self.eval_batch_size,
             world_size=world_size,
+            max_effective_pairs_per_rank=self.max_effective_pairs_per_rank,
 
             drop_last=True,
             shuffle_within_task=False,
