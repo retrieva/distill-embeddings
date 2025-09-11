@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import subprocess
 import tempfile
 import warnings
@@ -45,6 +46,49 @@ def _infer_run_id(output_base: Path) -> str | None:
     return None
 
 
+def _find_first_weight_file(root: Path) -> Path | None:
+    """Find a plausible weight file under a merged DeepSpeed output.
+
+    Prefer an actual file named 'pytorch_model.bin'. If not present, pick the largest
+    '*.bin' or '*.pt' file found recursively. Handle the case where a directory named
+    'pytorch_model.bin' is created by some versions.
+    """
+    if root.is_file():
+        return root
+    cand = root / "pytorch_model.bin"
+    if cand.exists() and cand.is_file():
+        return cand
+    # zero_to_fp32 sometimes creates a directory named 'pytorch_model.bin'
+    if cand.exists() and cand.is_dir():
+        nested = cand / "pytorch_model.bin"
+        if nested.exists() and nested.is_file():
+            return nested
+    # Fallback: pick largest bin/pt file
+    files = [p for p in root.rglob("*.bin")] + [p for p in root.rglob("*.pt")]
+    files = [p for p in files if p.is_file()]
+    if not files:
+        return None
+    files.sort(key=lambda p: p.stat().st_size, reverse=True)
+    return files[0]
+
+
+def _merge_deepspeed_shards(ckpt_dir: Path) -> Path:
+    """Run zero_to_fp32.py; return path to merged output (file or directory)."""
+    zero_script = ckpt_dir / "zero_to_fp32.py"
+    if not zero_script.exists():
+        raise RuntimeError(f"DeepSpeed checkpoint at {ckpt_dir} missing zero_to_fp32.py")
+    import sys as _sys
+    tmpdir = tempfile.mkdtemp(prefix="ds_merge_")
+    merged_path = Path(tmpdir) / "pytorch_model.bin"
+    cmd = [_sys.executable, str(zero_script), str(ckpt_dir), str(merged_path)]
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"zero_to_fp32 failed: {e}")
+    # Depending on DS version, either file or a directory may be created.
+    return merged_path if merged_path.exists() else Path(tmpdir)
+
+
 def _load_wandb_config(output_base: Path) -> dict:
     cfg_path = output_base / "wandb" / "latest-run" / "files" / "config.yaml"
     if not cfg_path.exists():
@@ -67,35 +111,31 @@ def _extract_student_state_dict(full_sd: dict) -> dict:
     return out
 
 
-def _load_student_from_ds_dir(ckpt_dir: Path, output_base: Path) -> tuple[SentenceTransformer, dict]:
+def _load_student_from_ds_dir(ckpt_dir: Path, output_base: Path, base_model_override: str | None = None) -> tuple[SentenceTransformer, dict]:
     cfg = _load_wandb_config(output_base)
-    base_model = cfg.get("student_model")
+    base_model = base_model_override or cfg.get("student_model")
     if not base_model:
         raise RuntimeError(
             "Could not infer student_model from W&B config. Provide a Lightning ckpt file or ensure W&B config exists."
         )
 
-    zero_script = ckpt_dir / "zero_to_fp32.py"
-    if not zero_script.exists():
-        raise RuntimeError(f"DeepSpeed checkpoint at {ckpt_dir} missing zero_to_fp32.py")
-
-    import sys as _sys
-
-    with tempfile.TemporaryDirectory() as td:
-        merged_path = Path(td) / "pytorch_model.bin"
-        cmd = [_sys.executable, str(zero_script), str(ckpt_dir), str(merged_path)]
-        try:
-            subprocess.run(cmd, check=True)
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"zero_to_fp32 failed: {e}")
-        full_sd = torch.load(str(merged_path), map_location="cpu")
+    merged_output = _merge_deepspeed_shards(ckpt_dir)
+    weight_file = _find_first_weight_file(merged_output)
+    if not weight_file:
+        raise RuntimeError(f"Merged weights not found under {merged_output}")
+    print(f"[posthoc] Using merged weight file: {weight_file}")
+    full_sd = torch.load(str(weight_file), map_location="cpu")
 
     st_sd = _extract_student_state_dict(full_sd)
     if not st_sd:
-        # Fallback: try to directly load layers under SentenceTransformer's first module
-        st_sd = {k: v for k, v in full_sd.items() if k.startswith("0.") or k.startswith("1.")}
-        if not st_sd:
-            raise RuntimeError("Could not locate student_model.* weights in merged state_dict.")
+        # Fallback 1: raw HF keys mapped under SentenceTransformer's first module
+        if isinstance(full_sd, dict) and all(isinstance(k, str) for k in full_sd.keys()):
+            st_sd = {f"0.auto_model.{k}": v for k, v in full_sd.items()}
+    if not st_sd:
+        # Fallback 2: keys already look like '0.xxx' or '1.xxx'
+        st_sd = {k: v for k, v in full_sd.items() if isinstance(k, str) and (k.startswith("0.") or k.startswith("1."))}
+    if not st_sd:
+        raise RuntimeError("Could not map merged state_dict to SentenceTransformer keys.")
 
     model = SentenceTransformer(base_model)
     model.load_state_dict(st_sd, strict=False)
@@ -109,12 +149,12 @@ def _load_student_from_ds_dir(ckpt_dir: Path, output_base: Path) -> tuple[Senten
     return model, hp
 
 
-def _load_student_from_ckpt(ckpt_path: Path) -> tuple[SentenceTransformer, dict]:
+def _load_student_from_ckpt(ckpt_path: Path, base_model_override: str | None = None) -> tuple[SentenceTransformer, dict]:
     if ckpt_path.is_dir():
         output_base = _infer_output_base_from_ckpt(ckpt_path)
-        return _load_student_from_ds_dir(ckpt_path, output_base)
+        return _load_student_from_ds_dir(ckpt_path, output_base, base_model_override)
     ckpt = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
-    base_model = ckpt["student_model_name"]
+    base_model = base_model_override or ckpt["student_model_name"]
     hp = ckpt.get("hyper_parameters", {})
     model = SentenceTransformer(base_model)
     sd = {k.removeprefix("student_model."): v for k, v in ckpt["state_dict"].items() if k.startswith("student_model.")}
@@ -132,8 +172,9 @@ def run_eval_and_update_wandb(
     num_workers: int | None,
     add_prefix: bool | None,
     project: str,
+    student_model: str | None = None,
 ):
-    model, hp = _load_student_from_ckpt(ckpt_path)
+    model, hp = _load_student_from_ckpt(ckpt_path, student_model)
 
     # Resolve settings from ckpt hyperparameters if not given
     lang = language or hp.get("language", "eng")
@@ -214,6 +255,7 @@ def main():
         "--add_prefix", type=lambda x: x.lower() == "true", default=None, help="Force add_prefix True/False"
     )
     p.add_argument("--project", type=str, default="distillation", help="W&B project name")
+    p.add_argument("--student_model", type=str, default=None, help="Override base student model (for DS ckpts without W&B config)")
     args = p.parse_args()
 
     run_eval_and_update_wandb(
@@ -225,6 +267,7 @@ def main():
         num_workers=args.num_workers,
         add_prefix=args.add_prefix,
         project=args.project,
+        student_model=args.student_model,
     )
 
 
