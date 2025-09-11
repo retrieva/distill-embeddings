@@ -2,6 +2,9 @@
 #PJM -L rscgrp=b-batch-mig
 #PJM -L gpu=1
 #PJM -L elapse=20:00:00
+
+
+# 0909/02
 module load cuda cudnn nccl gcc
 
 nvidia-smi
@@ -19,13 +22,13 @@ cd "${REPO_ROOT}"
 # Default to the most commonly used pair under output/result
 ROOT=${ROOT:-"output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B"}
 # Under this ROOT, experiments live at <data_size>/<code_name>
-PATTERN=${PATTERN:-"1794545/gte_plus_e3_bs128_wsd0.0001_infocse_prefix"}
+PATTERN=${PATTERN:-"1794545/gte_plus_e3_bs512_wsd0.0001_kld0.98_w-pos_prefix"}
 EPOCH=${EPOCH:-}
 BENCHMARK=${BENCHMARK:-"MTEB(eng, v2)"}
 LANGUAGE=${LANGUAGE:-}
 BATCH_SIZE=${BATCH_SIZE:-}
 NUM_WORKERS=${NUM_WORKERS:-}
-ADD_PREFIX=${ADD_PREFIX:-}
+ADD_PREFIX=${ADD_PREFIX:-True}
 PROJECT=${PROJECT:-"distillation"}
 
 usage() {
