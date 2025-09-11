@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 import tempfile
 import warnings
@@ -26,23 +27,48 @@ def _infer_output_base_from_ckpt(ckpt_path: Path) -> Path:
     return ckpt_path.parent
 
 
+def _read_run_id_from_metadata(path: Path) -> str | None:
+    """Read W&B run id from a metadata JSON file with robust fallbacks.
+
+    - First try strict JSON decode and lookup 'id'.
+    - If that fails, use a regex to extract "id": "..." even from partially written files.
+    """
+    try:
+        data = json.loads(path.read_text())
+        rid = data.get("id") if isinstance(data, dict) else None
+        if isinstance(rid, str) and rid:
+            return rid
+    except Exception:
+        pass
+    try:
+        m = re.search(r'"id"\s*:\s*"([^"]+)"', path.read_text(errors="ignore"))
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return None
+
+
 def _infer_run_id(output_base: Path) -> str | None:
+    # Env override (helpful for batch replays or CI)
+    env_rid = os.environ.get("WANDB_RUN_ID") or os.environ.get("RUN_ID")
+    if env_rid:
+        return env_rid
+
     # Try W&B latest-run metadata
     meta = output_base / "wandb" / "latest-run" / "files" / "wandb-metadata.json"
     if meta.exists():
-        try:
-            return json.loads(meta.read_text()).get("id")
-        except Exception:
-            return None
+        rid = _read_run_id_from_metadata(meta)
+        if rid:
+            return rid
     # Try glob any run directory and pick the newest
     wandb_dir = output_base / "wandb"
     if wandb_dir.exists():
         runs = sorted(wandb_dir.glob("run-*/files/wandb-metadata.json"))
         if runs:
-            try:
-                return json.loads(runs[-1].read_text()).get("id")
-            except Exception:
-                return None
+            rid = _read_run_id_from_metadata(runs[-1])
+            if rid:
+                return rid
     return None
 
 
@@ -163,6 +189,50 @@ def _load_student_from_ckpt(ckpt_path: Path, base_model_override: str | None = N
     return model, hp
 
 
+def _collect_cached_mteb_scores(output_folder: Path) -> dict[str, float]:
+    """Scan mteb_eval and aggregate main_score per task from existing JSON files.
+
+    Tries to be robust to different MTEB versions by checking several common shapes:
+      - {"scores": [{"split": "test", "main_score": ...}, ...]}
+      - {"test": {"main_score": ...}}
+      - {"main_score": ...}
+
+    For task name, prefers JSON field 'task_name', else falls back to parent directory name.
+    """
+    results: dict[str, float] = {}
+
+    def extract_main_score(d: dict) -> float | None:
+        # Prefer a 'test' split entry
+        scores = d.get("scores")
+        if isinstance(scores, list):
+            for entry in scores:
+                if isinstance(entry, dict) and entry.get("split") == "test" and isinstance(entry.get("main_score"), (int, float)):
+                    return float(entry["main_score"])
+            for entry in scores:
+                if isinstance(entry, dict) and isinstance(entry.get("main_score"), (int, float)):
+                    return float(entry["main_score"])
+        test = d.get("test")
+        if isinstance(test, dict) and isinstance(test.get("main_score"), (int, float)):
+            return float(test["main_score"])
+        if isinstance(d.get("main_score"), (int, float)):
+            return float(d["main_score"])
+        return None
+
+    for p in output_folder.rglob("*.json"):
+        if p.name != "results.json" and not p.name.endswith("results.json"):
+            continue
+        try:
+            data = json.loads(p.read_text())
+        except Exception:
+            continue
+        task = data.get("task_name") or p.parent.name
+        ms = extract_main_score(data)
+        if task and ms is not None:
+            # Prefer the latest file seen wins; rglob order is path-sorted, but OK for our use case
+            results[task] = ms
+    return results
+
+
 def run_eval_and_update_wandb(
     ckpt_path: Path,
     run_id: str | None,
@@ -173,6 +243,7 @@ def run_eval_and_update_wandb(
     add_prefix: bool | None,
     project: str,
     student_model: str | None = None,
+    reuse_cached: bool = False,
 ):
     model, hp = _load_student_from_ckpt(ckpt_path, student_model)
 
@@ -212,19 +283,30 @@ def run_eval_and_update_wandb(
             model,
             output_folder=output_folder,
             num_workers=workers,
-            overwrite_results=True,
+            overwrite_results=not reuse_cached,
             verbosity=1,
             encode_kwargs={"batch_size": bsz},
         )
 
-    mteb_dict = {s.task_name: s.get_score() for s in scores}
+    # Combine fresh scores with any cached results to ensure completeness
+    mteb_dict = _collect_cached_mteb_scores(output_folder)
+    for s in scores:
+        try:
+            mteb_dict[s.task_name] = s.get_score()
+        except Exception:
+            pass
     final_summary = {f"mteb_final/{k}": v for k, v in mteb_dict.items()}
 
     # WandB update
     if not run_id:
         run_id = _infer_run_id(output_base)
     if not run_id:
-        raise RuntimeError("W&B run id not provided and could not be inferred from output directory.")
+        meta = output_base / "wandb" / "latest-run" / "files" / "wandb-metadata.json"
+        raise RuntimeError(
+            "W&B run id not provided and could not be inferred from output directory. "
+            f"Tried: {meta} (exists={meta.exists()}), env WANDB_RUN_ID. "
+            "Pass --run_id explicitly or set WANDB_RUN_ID."
+        )
 
     wandb.init(project=project, id=run_id, resume="must")
     wandb.run.summary.update(final_summary)
@@ -256,6 +338,7 @@ def main():
     )
     p.add_argument("--project", type=str, default="distillation", help="W&B project name")
     p.add_argument("--student_model", type=str, default=None, help="Override base student model (for DS ckpts without W&B config)")
+    p.add_argument("--reuse_cached", action="store_true", help="Reuse cached MTEB results under mteb_eval instead of recomputing")
     args = p.parse_args()
 
     run_eval_and_update_wandb(
@@ -268,6 +351,7 @@ def main():
         add_prefix=args.add_prefix,
         project=args.project,
         student_model=args.student_model,
+        reuse_cached=args.reuse_cached,
     )
 
 

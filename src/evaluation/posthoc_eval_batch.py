@@ -51,6 +51,7 @@ def main():
     p.add_argument("--num_workers", type=int, default=None)
     p.add_argument("--add_prefix", type=lambda x: x.lower() == "true", default=None)
     p.add_argument("--project", type=str, default="distillation")
+    p.add_argument("--reuse_cached", action="store_true", help="Reuse cached results in mteb_eval instead of recomputing")
     args = p.parse_args()
 
     root = Path(args.root)
@@ -80,6 +81,7 @@ def main():
                 num_workers=args.num_workers,
                 add_prefix=args.add_prefix,
                 project=args.project,
+                reuse_cached=args.reuse_cached,
             )
             processed += 1
         except Exception as e:

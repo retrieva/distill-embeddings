@@ -27,6 +27,7 @@ BATCH_SIZE=${BATCH_SIZE:-}
 NUM_WORKERS=${NUM_WORKERS:-}
 ADD_PREFIX=${ADD_PREFIX:-}
 PROJECT=${PROJECT:-"distillation"}
+REUSE_CACHED=${REUSE_CACHED:-}
 
 usage() {
   cat <<USAGE
@@ -55,6 +56,7 @@ extra=()
 [[ -n "$NUM_WORKERS" ]] && extra+=(--num_workers "$NUM_WORKERS")
 [[ -n "$ADD_PREFIX" ]] && extra+=(--add_prefix "$ADD_PREFIX")
 [[ -n "$EPOCH" ]] && extra+=(--epoch "$EPOCH")
+[[ -n "$REUSE_CACHED" ]] && extra+=(--reuse_cached)
 
 uv run python -m src.evaluation.posthoc_eval_batch \
   --root "$ROOT" \
