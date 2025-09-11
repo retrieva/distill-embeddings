@@ -16,8 +16,14 @@ set -euo pipefail
 # Defaults match training layout: output/result/<student>/<teacher>/<data_size>/<code_name>
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="${SCRIPT_DIR}/.."
+# Resolve repo root robustly whether this script lives in script/ or script/*/*
+if [ -d "${SCRIPT_DIR}/../src" ]; then
+  REPO_ROOT="${SCRIPT_DIR}/.."
+else
+  REPO_ROOT="${SCRIPT_DIR}/../.."
+fi
 cd "${REPO_ROOT}"
+export PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 
 # Default to the most commonly used pair under output/result
 ROOT=${ROOT:-"output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B"}
