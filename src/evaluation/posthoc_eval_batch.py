@@ -69,9 +69,13 @@ def main():
             continue
         ckpt = find_ckpt(exp, args.epoch)
         if not ckpt:
-            print(f"[skip no ckpt] {exp}")
-            skipped += 1
-            continue
+            if args.cached_only and (exp / "mteb_eval").exists():
+                # Proceed without a ckpt by pointing to the experiment dir; will use cached_only path
+                ckpt = exp
+            else:
+                print(f"[skip no ckpt] {exp}")
+                skipped += 1
+                continue
         try:
             run_eval_and_update_wandb(
                 ckpt_path=ckpt,

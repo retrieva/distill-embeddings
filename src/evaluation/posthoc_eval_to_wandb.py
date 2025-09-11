@@ -246,7 +246,11 @@ def run_eval_and_update_wandb(
     reuse_cached: bool = False,
     cached_only: bool = False,
 ):
-    model, hp = _load_student_from_ckpt(ckpt_path, student_model)
+    # Load model only if we will evaluate; cached_only mode skips model load
+    model = None
+    hp: dict = {}
+    if not cached_only:
+        model, hp = _load_student_from_ckpt(ckpt_path, student_model)
 
     # Resolve settings from ckpt hyperparameters if not given
     lang = language or hp.get("language", "eng")
@@ -254,13 +258,21 @@ def run_eval_and_update_wandb(
     workers = num_workers or hp.get("num_workers", 4)
     use_prefix = add_prefix if add_prefix is not None else hp.get("add_prefix", True)
 
-    if use_prefix:
+    if not cached_only and use_prefix:
         model.prompts = {
             PromptType.query.value: "query: ",
             PromptType.passage.value: "document: ",
         }
-
-    output_base = _infer_output_base_from_ckpt(ckpt_path)
+    # Determine output_base robustly so cached-only works even without a ckpt file
+    try:
+        ckpt_p = ckpt_path
+        if ckpt_p.is_dir() and (ckpt_p / "mteb_eval").exists():
+            output_base = ckpt_p
+        else:
+            output_base = _infer_output_base_from_ckpt(ckpt_p)
+    except Exception:
+        # Fall back to parent
+        output_base = ckpt_path.parent
     output_folder = output_base / "mteb_eval"
     output_folder.mkdir(parents=True, exist_ok=True)
 
@@ -323,7 +335,10 @@ def main():
         "--ckpt",
         type=str,
         required=True,
-        help="Path to Lightning .ckpt file or DeepSpeed checkpoint directory (e.g., .../last.ckpt)",
+        help=(
+            "Path to Lightning .ckpt file or DeepSpeed checkpoint directory (e.g., .../last.ckpt). "
+            "In --cached_only mode, you may pass the experiment directory containing mteb_eval/ instead."
+        ),
     )
     p.add_argument("--run_id", type=str, default=None, help="Existing W&B run id (infer if omitted)")
     p.add_argument(
