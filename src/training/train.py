@@ -13,6 +13,15 @@ from src.training.model import KDForSentEmb
 from src.utils import get_code_name
 
 if __name__ == "__main__":
+    # Avoid long first-step kernel compiles (Flash/MemEff SDP) on some setups
+    try:
+        from torch.backends.cuda import sdp_kernel
+
+        sdp_kernel.enable_flash(False)
+        sdp_kernel.enable_mem_efficient(False)
+        sdp_kernel.enable_math(True)
+    except Exception:
+        pass
     # Safer defaults to avoid OpenMP/joblib conflicts during eval/clustering
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
     os.environ.setdefault("OMP_NUM_THREADS", "1")

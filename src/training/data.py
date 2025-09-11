@@ -399,6 +399,7 @@ class DataModuleForDistill(L.LightningDataModule):
             num_workers=self.num_workers,
             collate_fn=self.collate_fn_train,
             pin_memory=True,
+            persistent_workers=True if self.num_workers and self.num_workers > 0 else False,
         )
 
     def val_dataloader(self):
@@ -409,4 +410,5 @@ class DataModuleForDistill(L.LightningDataModule):
             num_workers=self.num_workers,
             collate_fn=self.collate_fn_val,
             pin_memory=True,
+            persistent_workers=True if self.num_workers and self.num_workers > 0 else False,
         )
