@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+#PJM -L rscgrp=b-batch
+#PJM -L gpu=1
+#PJM -L elapse=20:00:00
+module load cuda cudnn nccl gcc
+
+nvidia-smi
+export SSL_CERT_FILE=$(uv run python -c "import certifi; print(certifi.where())")
+
 set -euo pipefail
 
 # Batch re-run MTEB and update W&B summary for many experiments.
@@ -8,8 +16,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${SCRIPT_DIR}/.."
 cd "${REPO_ROOT}"
 
-ROOT=${ROOT:-"output/result"}
-PATTERN=${PATTERN:-"*/*/*/*"}
+# Default to the most commonly used pair under output/result
+ROOT=${ROOT:-"output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B"}
+# Under this ROOT, experiments live at <data_size>/<code_name>
+PATTERN=${PATTERN:-"1794545/*"}
 EPOCH=${EPOCH:-}
 BENCHMARK=${BENCHMARK:-"MTEB(eng, v2)"}
 LANGUAGE=${LANGUAGE:-}
@@ -20,11 +30,11 @@ PROJECT=${PROJECT:-"distillation"}
 
 usage() {
   cat <<USAGE
-Usage: ROOT=output/result PATTERN='*/*/*/*' ./script/posthoc_eval_all.sh
+Usage: ROOT=<root> PATTERN='<glob>' ./script/posthoc_eval_all.sh
 
 Env vars:
-  ROOT         Root directory of experiments (default: output/result)
-  PATTERN      Glob under ROOT to locate experiment dirs (default: */*/*/*)
+  ROOT         Root directory of experiments (default: output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B)
+  PATTERN      Glob under ROOT to locate experiment dirs (default: 1794545/*)
   EPOCH        If set, use checkpoints/<EPOCH>.ckpt instead of last.ckpt
   BENCHMARK    Benchmark alias/name (default: MTEB(eng, v2))
   LANGUAGE     Override language (optional)
@@ -46,7 +56,7 @@ extra=()
 [[ -n "$ADD_PREFIX" ]] && extra+=(--add_prefix "$ADD_PREFIX")
 [[ -n "$EPOCH" ]] && extra+=(--epoch "$EPOCH")
 
-python -m src.evaluation.posthoc_eval_batch \
+uv run python -m src.evaluation.posthoc_eval_batch \
   --root "$ROOT" \
   --pattern "$PATTERN" \
   --benchmark_name "$BENCHMARK" \

@@ -2,12 +2,11 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Optional
 
 from .posthoc_eval_to_wandb import run_eval_and_update_wandb
 
 
-def find_ckpt(exp_dir: Path, epoch: Optional[int]) -> Optional[Path]:
+def find_ckpt(exp_dir: Path, epoch: int | None) -> Path | None:
     """Pick last.ckpt or a specific epoch ckpt if requested."""
     if epoch is None:
         last = exp_dir / "last.ckpt"
@@ -90,4 +89,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
