@@ -117,7 +117,6 @@ class SentEmb(L.LightningModule):
     def on_train_epoch_end(self):
         if not self.trainer.is_global_zero:
             return
-        self.trainer.save_checkpoint(self.args.output_dir / "last.ckpt")
         if not self.args.mteb_eval:
             return
         try:
@@ -159,6 +158,7 @@ class SentEmb(L.LightningModule):
         return True
 
     def _on_train_end_mteb(self):
+        self.trainer.save_checkpoint(self.args.output_dir / "last.ckpt")
         if not self.args.mteb_eval:
             return
         try:
