@@ -15,6 +15,18 @@ cd "${REPO_ROOT}"
 module load cuda cudnn nccl gcc
 nvidia-smi
 
+# Per-job cache isolation to avoid Triton/Inductor cache conflicts
+# Detect a job id from common schedulers, fallback to PID
+JOB_ID="${PJM_JOBID:-${SLURM_JOB_ID:-${PBS_JOBID:-$$}}}"
+CACHE_BASE="${TMPDIR:-/tmp}/de-cache/${USER}/${JOB_ID}"
+export TRITON_CACHE_DIR="${CACHE_BASE}/triton"
+export TORCHINDUCTOR_CACHE_DIR="${CACHE_BASE}/inductor"
+export XDG_CACHE_HOME="${CACHE_BASE}/xdg"
+mkdir -p "${TRITON_CACHE_DIR}" "${TORCHINDUCTOR_CACHE_DIR}" "${XDG_CACHE_HOME}" || true
+echo "Using TRITON_CACHE_DIR=${TRITON_CACHE_DIR}"
+echo "Using TORCHINDUCTOR_CACHE_DIR=${TORCHINDUCTOR_CACHE_DIR}"
+trap 'rm -rf "${CACHE_BASE}" || true' EXIT
+
 # Quieter + stable threading
 export OPENBLAS_NUM_THREADS=32
 export OMP_NUM_THREADS=32
