@@ -85,8 +85,10 @@ if __name__ == "__main__":
     lr_monitor = LearningRateMonitor(logging_interval="step")
     # Decide strategy: default to plain Lightning on single GPU, DeepSpeed on multi-GPU,
     # unless user explicitly forces DeepSpeed via --strategy deepspeed
-    env_world_size = int(os.environ.get("WORLD_SIZE", "1"))
-    use_ds = (args.strategy == "deepspeed") or (args.strategy == "auto" and env_world_size > 1)
+    # Prefer DeepSpeed automatically when multiple GPUs are visible
+    visible_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
+    env_world_size = int(os.environ.get("WORLD_SIZE", str(max(1, visible_gpus))))
+    use_ds = (args.strategy == "deepspeed") or (args.strategy == "auto" and visible_gpus > 1)
     strategy = None
     if use_ds:
         deepspeed_config = {
@@ -99,6 +101,9 @@ if __name__ == "__main__":
             },
         }
         strategy = DeepSpeedStrategy(config=deepspeed_config)
+    else:
+        # Let Lightning pick the appropriate DDP when not using DeepSpeed
+        pass
 
     trainer = L.Trainer(
         devices="auto",

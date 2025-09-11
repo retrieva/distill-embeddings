@@ -47,6 +47,7 @@ for loss_type in "kld"; do
                 --gradient_checkpointing False \
                 --chunk_parts 4 \
                 --distill_weight "$distill_weight" \
+                --strategy deepspeed \
                 --lr "$lr"
         done
     done
