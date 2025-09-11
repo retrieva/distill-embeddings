@@ -13,6 +13,10 @@ from src.training.model import KDForSentEmb
 from src.utils import get_code_name
 
 if __name__ == "__main__":
+    # Safer defaults to avoid OpenMP/joblib conflicts during eval/clustering
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
     args = parse_args()
     world_size = 1
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
@@ -26,6 +30,13 @@ if __name__ == "__main__":
     args.world_size = world_size
     args.global_batch_size = args.batch_size * args.world_size
     L.seed_everything(42, workers=True)
+    # Keep CPU thread usage minimal for stability on HPC environments
+    try:
+        import torch
+
+        torch.set_num_threads(1)
+    except Exception:
+        pass
     torch.set_float32_matmul_precision("high")
     data_dir = (
         Path(args.data_dir) / f"{args.data_name}-{args.language}" / f"{args.teacher_model.replace('/', '_')}_encoded"

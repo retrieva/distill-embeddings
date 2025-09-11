@@ -134,12 +134,15 @@ class SentEmb(L.LightningModule):
             )
             import warnings
 
+            # NOTE: Some clustering tasks (e.g., ArXivHierarchicalClustering*)
+            # are unstable with multiprocessing in certain environments.
+            # Run MTEB sequentially to avoid joblib/loky + OpenMP issues.
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 scores = evaluation.run(
                     self.student_model,
                     output_folder=output_folder,
-                    num_workers=self.args.num_workers,
+                    num_workers=1,
                     overwrite_results=True,
                     verbosity=1,
                     encode_kwargs={"batch_size": self.args.batch_size},
@@ -178,12 +181,13 @@ class SentEmb(L.LightningModule):
             )
             import warnings
 
+            # See note above: run MTEB single-threaded for stability.
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 scores = evaluation.run(
                     self.student_model,
                     output_folder=output_folder,
-                    num_workers=self.args.num_workers,
+                    num_workers=1,
                     overwrite_results=True,
                     verbosity=1,
                     encode_kwargs={"batch_size": self.args.batch_size},
