@@ -14,6 +14,7 @@ with open("src/aggregate/agg_config.yaml") as f:
 project = config["project"]
 filters = config["filters"]
 group_code_name = config["group_code_name"]
+drop_tasks = set(config.get("drop_tasks", []) or [])
 
 api = wandb.Api()
 print(f"Fetching runs with filters: {filters}")
@@ -154,6 +155,10 @@ if all_summaries:
     if only_benchmark_tasks and bench_task_names:
         task_cols = [c for c in task_cols if c in bench_task_names]
         # Trim DataFrame to selected task columns
+        df = df[["code_name", "run_name"] + task_cols]
+    # Drop explicitly excluded tasks
+    if drop_tasks:
+        task_cols = [c for c in task_cols if c not in drop_tasks]
         df = df[["code_name", "run_name"] + task_cols]
 
     # Build category -> columns mapping
