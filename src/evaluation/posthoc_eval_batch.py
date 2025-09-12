@@ -34,6 +34,7 @@ def summary_has_mteb(exp_dir: Path, prefix: str = "mteb_final/") -> bool:
     try:
         data = json.loads(summary.read_text())
     except Exception:
+        print(f"[posthoc] Warning: could not parse JSON from {summary}")
         return False
     return any(k.startswith(prefix) for k in data.keys())
 
@@ -75,8 +76,12 @@ def main():
         default=None,
         help="Override base student model (for DeepSpeed ckpts without W&B config)",
     )
-    p.add_argument("--reuse_cached", action="store_true", help="Reuse cached results in mteb_eval instead of recomputing")
-    p.add_argument("--cached_only", action="store_true", help="Skip evaluation; only push from existing mteb_eval results")
+    p.add_argument(
+        "--reuse_cached", action="store_true", help="Reuse cached results in mteb_eval instead of recomputing"
+    )
+    p.add_argument(
+        "--cached_only", action="store_true", help="Skip evaluation; only push from existing mteb_eval results"
+    )
     args = p.parse_args()
 
     root = Path(args.root)
