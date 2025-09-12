@@ -371,6 +371,7 @@ def run_eval_and_update_wandb(
         output_base = ckpt_path.parent
     output_folder = output_base / "mteb_eval"
     output_folder.mkdir(parents=True, exist_ok=True)
+    print(output_folder)
 
     # Resolve task list
     if benchmark_name in ["on_eval_tasks", "on_train_end_tasks", "on_train_tasks"]:
