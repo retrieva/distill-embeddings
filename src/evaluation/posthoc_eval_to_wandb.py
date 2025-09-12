@@ -39,6 +39,7 @@ def _read_run_id_from_metadata(path: Path) -> str | None:
         if isinstance(rid, str) and rid:
             return rid
     except Exception:
+        print(f"[posthoc] Warning: could not parse JSON from {path}, trying regex fallback")
         pass
     try:
         m = re.search(r'"id"\s*:\s*"([^"]+)"', path.read_text(errors="ignore"))
@@ -154,10 +155,10 @@ def _preflight_wandb_json(output_base: Path) -> None:
     ]
     # Also check the newest run-*/files/wandb-metadata.json
     try:
-        meta_runs = sorted((wdir.glob("run-*/files/wandb-metadata.json")))
+        meta_runs = sorted(wdir.glob("run-*/files/wandb-metadata.json"))
         if meta_runs:
             cand.append(meta_runs[-1])
-        sum_runs = sorted((wdir.glob("run-*/files/wandb-summary.json")))
+        sum_runs = sorted(wdir.glob("run-*/files/wandb-summary.json"))
         if sum_runs:
             cand.append(sum_runs[-1])
     except Exception:
@@ -206,6 +207,7 @@ def _infer_wandb_entity_project(output_base: Path) -> tuple[str | None, str | No
         proj = data.get("project")
         return ent, proj
     except Exception:
+        print(f"[posthoc] Warning: could not parse JSON from {meta}, trying regex fallback")
         return None, None
 
 
@@ -315,6 +317,7 @@ def _collect_cached_mteb_scores(output_folder: Path) -> dict[str, float]:
         try:
             data = json.loads(p.read_text())
         except Exception:
+            print(f"[posthoc] Warning: could not parse JSON from {p}, trying regex fallback")
             continue
         task = data.get("task_name") or p.parent.name
         ms = extract_main_score(data)
