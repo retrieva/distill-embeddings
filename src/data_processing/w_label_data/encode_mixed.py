@@ -6,6 +6,7 @@ from pathlib import Path
 import torch
 from datasets import Dataset, concatenate_datasets, load_from_disk
 from sentence_transformers import SentenceTransformer
+from transformers import AutoTokenizer
 
 from src.data_processing.encode_utils import (
     encode_with_checkpoint,
@@ -139,12 +140,31 @@ def main(args: argparse.Namespace):
         enc_ds = enc_ds.add_column("len", [len(t) for t in enc_ds["text"]])
     enc_ds = enc_ds.sort("len", reverse=True)
 
-    # Stats + split long/short by threshold
+    # Stats + split long/medium/short
     stats = stat_text_lengths(enc_ds["text"])
     logger.info(f"Text length stats: {stats}")
+
+    # First split by character threshold for super-long texts
     long_texts = enc_ds.filter(lambda x: x["len"] > args.threshold)
-    short_texts = enc_ds.filter(lambda x: x["len"] <= args.threshold)
-    logger.info(f"Long={len(long_texts)}, Short={len(short_texts)}")
+    non_long = enc_ds.filter(lambda x: x["len"] <= args.threshold)
+
+    # Medium bucket: texts whose tokenized length fits within medium_threshold (default: 128)
+    # Use teacher tokenizer to measure token length without truncation
+    logger.info("Tokenizing to compute token lengths for medium split...")
+    tokenizer = AutoTokenizer.from_pretrained(args.teacher_model, use_fast=True)
+
+    def add_tok_len(batch):
+        toks = tokenizer(batch["text"], add_special_tokens=True, truncation=False)
+        return {"tok_len": [len(ids) for ids in toks["input_ids"]]}
+
+    non_long = non_long.map(add_tok_len, batched=True, batch_size=1024, desc="compute tok_len")
+    medium_texts = non_long.filter(lambda x: x["tok_len"] <= args.medium_threshold)
+    short_texts = non_long.filter(lambda x: x["tok_len"] > args.medium_threshold)
+    # Drop helper column to keep schemas aligned for concatenation
+    medium_texts = medium_texts.remove_columns([c for c in ["tok_len"] if c in medium_texts.column_names])
+    short_texts = short_texts.remove_columns([c for c in ["tok_len"] if c in short_texts.column_names])
+
+    logger.info(f"Long={len(long_texts)}, Medium={len(medium_texts)}, Short={len(short_texts)}")
 
     # Load teacher model (single GPU)
     model = SentenceTransformer(args.teacher_model).bfloat16()
@@ -159,6 +179,14 @@ def main(args: argparse.Namespace):
                 long_texts["text"][: args.long_batch_size * 2],
                 show_progress_bar=True,
                 batch_size=args.long_batch_size,
+                max_length=args.max_length,
+                normalize_embeddings=True,
+            )
+        if len(medium_texts) > 0:
+            model.encode(
+                medium_texts["text"][: args.medium_batch_size * 2],
+                show_progress_bar=True,
+                batch_size=args.medium_batch_size,
                 max_length=args.max_length,
                 normalize_embeddings=True,
             )
@@ -185,6 +213,19 @@ def main(args: argparse.Namespace):
             else torch.empty((0, model.get_sentence_embedding_dimension()))
         )
 
+        logger.info("-- Medium Encode --")
+        medium_feats = (
+            encode_with_checkpoint(
+                model,
+                medium_texts["text"],
+                args.medium_batch_size,
+                checkpoint_dir / "medium.pkl",
+                args.max_length,
+            )
+            if len(medium_texts) > 0
+            else torch.empty((0, model.get_sentence_embedding_dimension()))
+        )
+
         logger.info("-- Short Encode --")
         short_feats = (
             encode_with_checkpoint(
@@ -200,6 +241,7 @@ def main(args: argparse.Namespace):
 
     # Validate sizes
     assert len(long_texts) == len(long_feats), f"long size mismatch {len(long_texts)} vs {len(long_feats)}"
+    assert len(medium_texts) == len(medium_feats), f"medium size mismatch {len(medium_texts)} vs {len(medium_feats)}"
     assert len(short_texts) == len(short_feats), f"short size mismatch {len(short_texts)} vs {len(short_feats)}"
 
     # Reconstruct back to anc/pos/neg grouped by (subset,id)
@@ -209,12 +251,21 @@ def main(args: argparse.Namespace):
         long_feats = long_feats.cpu().numpy()
     if isinstance(short_feats, torch.Tensor):
         short_feats = short_feats.cpu().numpy()
-    all_texts = concatenate_datasets([long_texts, short_texts])
-    all_features = (
-        np.vstack([long_feats, short_feats])
-        if len(long_texts) and len(short_texts)
-        else (long_feats if len(long_texts) else short_feats)
-    )
+    parts_texts = []
+    parts_feats = []
+    if len(long_texts) > 0:
+        parts_texts.append(long_texts)
+        parts_feats.append(long_feats)
+    if len(medium_texts) > 0:
+        parts_texts.append(medium_texts)
+        parts_feats.append(medium_feats)
+    if len(short_texts) > 0:
+        parts_texts.append(short_texts)
+        parts_feats.append(short_feats)
+
+    from datasets import concatenate_datasets
+    all_texts = concatenate_datasets(parts_texts) if len(parts_texts) > 1 else parts_texts[0]
+    all_features = np.vstack(parts_feats) if len(parts_feats) > 1 else parts_feats[0]
     assert len(all_texts) == len(all_features), f"Combined data size mismatch: {len(all_texts)} vs {len(all_features)}"
     all_texts = all_texts.add_column(name="emb_idx", column=[i for i in range(len(all_texts))])
 
@@ -285,12 +336,23 @@ if __name__ == "__main__":
     p.add_argument("--sample-size", type=int, default=None, help="Optional cap of rows to encode")
     p.add_argument("--threshold", type=int, default=2048, help="Split boundary by char length")
     p.add_argument("--long-batch-size", type=int, default=1)
+    p.add_argument("--medium-batch-size", type=int, default=None, help="Batch size for medium texts (<=128 tokens)")
     p.add_argument("--short-batch-size", type=int, default=32)
-    p.add_argument("--max-length", type=int, default=None)
+    # Max seq length used during encoding for all buckets
+    p.add_argument("--max-length", type=int, default=None, help="Maximum token length used in encode()")
+    # Medium threshold controls only the split; keep deprecated alias for compat
+    p.add_argument("--medium-threshold", type=int, default=128, help="Token threshold for medium bucket split")
+    p.add_argument("--medium-max-length", type=int, default=None, help="[Deprecated] Use --medium-threshold instead")
     p.add_argument("--num-proc", type=int, default=4)
     p.add_argument(
         "--instruction-file", default="data/w_label_data/instruction.json", help="JSON mapping: subset -> instruction"
     )
     p.add_argument("--instruction-text", default=None, help="Single instruction string for all subsets")
     args = p.parse_args()
+    # Normalization for deprecated alias
+    if args.medium_max_length is not None:
+        args.medium_threshold = args.medium_max_length
+    # Default medium batch size to short if not provided
+    if args.medium_batch_size is None:
+        args.medium_batch_size = args.short_batch_size
     main(args)
