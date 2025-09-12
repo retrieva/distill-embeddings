@@ -15,6 +15,7 @@ from src.data_processing.encode_utils import (
     encode_with_checkpoint_multigpu,
     get_available_gpus,
     setup_multiprocess_pool,
+    save_split_dataset,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -80,14 +81,32 @@ def stat_text_lengths(texts):
 
 
 def main(args):
+    # Prefer TF32 for faster matmul on Ampere+
+    try:
+        torch.set_float32_matmul_precision("high")
+    except Exception:
+        pass
     # Load a dataset from the Hugging Face Hub
     dataset = load_dataset(
         args.data_name,
         args.subset_name,
         split="train",
     )
-    texts = list(dataset["text"][: args.sample_size]) if args.sample_size else list(dataset["text"])
-    logger.info(f"Loaded dataset: {args.data_name} ({args.subset_name}) with {len(texts)} samples")
+    # Downsample if requested
+    if args.sample_size:
+        dataset = dataset.select(range(min(args.sample_size, len(dataset))))
+    # Optional sharding for parallel jobs
+    if args.num_shards > 1:
+        assert 0 <= args.shard_id < args.num_shards, "shard_id must be in [0, num_shards)"
+        shard_size = len(dataset) // args.num_shards
+        start = args.shard_id * shard_size
+        end = len(dataset) if args.shard_id == args.num_shards - 1 else start + shard_size
+        logger.info(f"Sharding dataset: shard {args.shard_id}/{args.num_shards} -> [{start}:{end})")
+        dataset = dataset.select(range(start, end))
+    texts = list(dataset["text"]) if len(dataset) > 0 else []
+    logger.info(
+        f"Loaded dataset: {args.data_name} ({args.subset_name}) with {len(texts)} samples (post-shard/downsample)"
+    )
     if args.short_text_ratio > 0:
         texts = split_to_short_texts(texts, args.short_text_ratio)
     # 後ろの方にめっちゃ短いの集まってそうなので、削っとく
@@ -106,11 +125,15 @@ def main(args):
         / f"{args.teacher_model.replace('/', '_')}_encoded"
         / f"{args.subset_name}_{args.sample_size if args.sample_size else 'full'}"
     )
+    if args.num_shards and args.num_shards > 1:
+        output_path = output_path / f"shard_{args.shard_id}_of_{args.num_shards}"
     output_path.mkdir(parents=True, exist_ok=True)
     checkpoint_dir = output_path / "checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    teacher_model = SentenceTransformer(args.teacher_model).bfloat16()
+    teacher_model = SentenceTransformer(
+        args.teacher_model, device=("cuda" if torch.cuda.is_available() else "cpu")
+    ).bfloat16()
     logger.info(f"Loaded teacher model: {args.teacher_model}")
 
     # Multi-GPU setup (optional)
@@ -122,23 +145,24 @@ def main(args):
     dim = teacher_model.get_sentence_embedding_dimension()
 
     with torch.no_grad():
-        logger.info("-- Check OOM --")
-        if len(long_texts) > 0:
-            teacher_model.encode(
-                long_texts[: args.long_batch_size * 2],
-                show_progress_bar=True,
-                batch_size=args.long_batch_size,
-                max_length=args.max_length,
-                normalize_embeddings=True,
-            )
-        if len(short_texts) > 0:
-            teacher_model.encode(
-                short_texts[: args.short_batch_size * 2],
-                show_progress_bar=True,
-                batch_size=args.short_batch_size,
-                max_length=args.max_length,
-                normalize_embeddings=True,
-            )
+        if not args.skip_oom_check:
+            logger.info("-- Check OOM --")
+            if len(long_texts) > 0:
+                teacher_model.encode(
+                    long_texts[: args.long_batch_size * 2],
+                    show_progress_bar=True,
+                    batch_size=args.long_batch_size,
+                    max_length=args.max_length,
+                    normalize_embeddings=True,
+                )
+            if len(short_texts) > 0:
+                teacher_model.encode(
+                    short_texts[: args.short_batch_size * 2],
+                    show_progress_bar=True,
+                    batch_size=args.short_batch_size,
+                    max_length=args.max_length,
+                    normalize_embeddings=True,
+                )
 
         logger.info("-- Long Encode --")
         if len(long_texts) > 0:
@@ -188,16 +212,15 @@ def main(args):
     if pool is not None:
         teacher_model.stop_multi_process_pool(pool)
 
-    # Save in the original format: dataset with embedded features column
-    output_dataset = Dataset.from_dict(
-        {
-            "text": long_texts + short_texts,
-            "teacher_features": np.concatenate([long_teacher_features, short_teacher_features])
-            if len(long_teacher_features) and len(short_teacher_features)
-            else (long_teacher_features if len(long_teacher_features) else short_teacher_features),
-        }
+    # Save as compact dataset + memmapped embeddings
+    all_texts = long_texts + short_texts
+    all_features = (
+        np.concatenate([long_teacher_features, short_teacher_features])
+        if len(long_teacher_features) and len(short_teacher_features)
+        else (long_teacher_features if len(long_teacher_features) else short_teacher_features)
     )
-    output_dataset.save_to_disk(output_path)
+    compact_ds = Dataset.from_dict({"text": all_texts, "emb_idx": list(range(len(all_texts)))})
+    save_split_dataset(compact_ds, all_features, output_path)
     json.dump(stats, open(output_path / "stats.json", "w"), indent=4)
 
 
@@ -219,5 +242,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--short_text_ratio", type=float, default=0.3, help="Ratio of short text samples")
     parser.add_argument("--disable_multigpu", action="store_true", help="Disable multi-GPU processing")
+    parser.add_argument("--num_shards", type=int, default=1, help="Total number of shards for parallel encoding")
+    parser.add_argument("--shard_id", type=int, default=0, help="Shard ID [0, num_shards)")
+    parser.add_argument("--skip_oom_check", action="store_true", help="Skip small warmup OOM check to save time")
     args = parser.parse_args()
     main(args)
