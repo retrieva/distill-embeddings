@@ -1,6 +1,6 @@
 #!/bin/sh
 #PJM -L rscgrp=b-batch
-#PJM -L gpu=1
+#PJM -L gpu=2
 #PJM -L elapse=07:00:00
 #PJM -j
 
@@ -17,6 +17,7 @@ uv run python -m src.data_processing.finweb.encode \
     --output_dir "data" \
     --teacher_model "Qwen/Qwen3-Embedding-4B" \
     --long_batch_size 2 \
-    --short_batch_size 64 \
+    --short_batch_size 128 \
     --threshold 2048 \
-    --max_length 4096
+    --max_length 4096 \
+    --skip_oom_check
