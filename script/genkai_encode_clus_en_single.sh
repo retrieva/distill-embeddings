@@ -14,6 +14,6 @@ CUDA_VISIBLE_DEVICES=7 uv run python -m src.data_processing.w_label_data.encode_
     --teacher-model Qwen/Qwen3-Embedding-4B \
     --threshold 2048 \
     --long-batch-size 1 \
-    --short-batch-size 128 \
+    --short-batch-size 256 \
     --max-length 4096 \
     --num-proc 4
