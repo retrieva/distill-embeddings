@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #PJM -L rscgrp=b-batch-mig
-#PJM -L gpu=4
+#PJM -L gpu=1
 #PJM -L elapse=20:00:00
 #PJM -j
 #PJM -o logs/0912/01.log
