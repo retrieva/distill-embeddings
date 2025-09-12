@@ -19,7 +19,6 @@ run_job() {
   log_file="$2"
   shift 2
   (
-    set -e
     mkdir -p "$(dirname "$log_file")"
     LOCKS=""
     trap 'for l in $LOCKS; do rmdir "$l" 2>/dev/null || true; done' EXIT INT TERM
@@ -33,7 +32,16 @@ run_job() {
       LOCKS="$LOCKS $lock"
     done
     export CUDA_VISIBLE_DEVICES="$devices"
-    nohup "$@" > "$log_file" 2>&1
+    cmd_str="$*"
+    ts() { date '+%F %T'; }
+    echo "[$(ts)] START  GPUs=[$devices] -> $cmd_str (log=$log_file)"
+    nohup "$@" > "$log_file" 2>&1 &
+    child=$!
+    echo "[$(ts)] RUNNING GPUs=[$devices] pid=$child"
+    set +e
+    wait "$child"
+    status=$?
+    echo "[$(ts)] END    GPUs=[$devices] pid=$child status=$status (log=$log_file)"
   ) &
 }
 
