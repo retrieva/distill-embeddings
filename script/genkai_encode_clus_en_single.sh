@@ -16,6 +16,6 @@ CUDA_VISIBLE_DEVICES=7 uv run python -m src.data_processing.w_label_data.encode_
     --long-batch-size 1 \
     --short-batch-size 256 \
     --medium-batch-size 128 \
-    --medium-threshold 1024 \
+    --medium-threshold 512 \
     --max-length 4096 \
     --num-proc 4
