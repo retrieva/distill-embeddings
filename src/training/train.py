@@ -83,12 +83,21 @@ if __name__ == "__main__":
         save_on_train_epoch_end=True,
     )
     lr_monitor = LearningRateMonitor(logging_interval="step")
-    # Decide strategy: default to plain Lightning on single GPU, DeepSpeed on multi-GPU,
-    # unless user explicitly forces DeepSpeed via --strategy deepspeed
-    # Prefer DeepSpeed automatically when multiple GPUs are visible
+    # Decide strategy: default to plain Lightning on single GPU/process.
+    # Use DeepSpeed only when explicitly requested or when WORLD_SIZE>1 (multi-process launch via torchrun etc.).
+    # Rationale: Resuming from a single-file .ckpt is incompatible with DeepSpeed's directory checkpoints.
     visible_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
-    env_world_size = int(os.environ.get("WORLD_SIZE", str(max(1, visible_gpus))))
-    use_ds = (args.strategy == "deepspeed") or (args.strategy == "auto" and visible_gpus > 1)
+    env_world_size = int(os.environ.get("WORLD_SIZE", "1"))
+
+    # If resuming from a single-file ckpt, avoid DeepSpeed regardless of GPU visibility
+    resuming_from_file_ckpt = args.ckpt_path is not None and os.path.isfile(str(args.ckpt_path))
+
+    use_ds = (args.strategy == "deepspeed") or (args.strategy == "auto" and env_world_size > 1)
+    if resuming_from_file_ckpt and use_ds:
+        print(
+            "[train] Detected single-file checkpoint for --ckpt_path; disabling DeepSpeed to allow resume from .ckpt."
+        )
+        use_ds = False
     strategy = None
     if use_ds:
         deepspeed_config = {
