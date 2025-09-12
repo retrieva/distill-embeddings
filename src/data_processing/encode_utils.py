@@ -21,7 +21,14 @@ def get_available_gpus():
 def encode_with_checkpoint_multigpu(
     model, texts: List[str], batch_size: int, checkpoint_path: Union[str, Path], max_length: int = None, pool=None
 ) -> np.ndarray:
-    """マルチGPU対応のチェックポイント機能付きエンコーディング"""
+    """
+    マルチGPU対応のチェックポイント機能付きエンコーディング。
+
+    注意: SentenceTransformers の encode_multi_process はバージョン差により
+    encode() と同じキーワード引数を受けない場合があります（例: max_length）。
+    ここでは互換性重視で、encode_multi_process には必須最小限の引数のみ渡し、
+    正規化は後処理で行います。
+    """
     checkpoint_path = Path(checkpoint_path)
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -37,16 +44,21 @@ def encode_with_checkpoint_multigpu(
     remaining_texts = texts[start_batch * batch_size :]
 
     if remaining_texts:
-        # SentenceTransformerのstart_multi_process_poolを使用
-        batch_features = model.encode_multi_process(
-            remaining_texts,
-            pool=pool,
-            batch_size=batch_size,
-            max_length=max_length,
-            normalize_embeddings=True,
-            show_progress_bar=True,
-            chunksize=1000,  # プロセス間でのチャンク サイズ
-        )
+        # SentenceTransformer の encode_multi_process を堅牢に呼び出す（互換性対応）
+        try:
+            batch_features = model.encode_multi_process(
+                remaining_texts,
+                pool=pool,
+                batch_size=batch_size,
+            )
+        except TypeError:
+            # 一部バージョンは pool を位置引数で受け取る
+            batch_features = model.encode_multi_process(remaining_texts, pool, batch_size=batch_size)
+
+        batch_features = np.asarray(batch_features)
+        # 正規化（L2）を後処理で実施
+        norms = np.linalg.norm(batch_features, axis=1, keepdims=True) + 1e-12
+        batch_features = batch_features / norms
         all_features.extend(batch_features)
 
     return np.array(all_features)

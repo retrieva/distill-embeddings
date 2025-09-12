@@ -134,6 +134,12 @@ def main(args):
     teacher_model = SentenceTransformer(
         args.teacher_model, device=("cuda" if torch.cuda.is_available() else "cpu")
     ).bfloat16()
+    if args.max_length:
+        try:
+            teacher_model.max_seq_length = int(args.max_length)
+            logger.info(f"Set model.max_seq_length={teacher_model.max_seq_length}")
+        except Exception:
+            logger.warning("Could not set model.max_seq_length; proceeding with default.")
     logger.info(f"Loaded teacher model: {args.teacher_model}")
 
     # Multi-GPU setup (optional)
