@@ -51,6 +51,12 @@ def main():
     p.add_argument("--num_workers", type=int, default=None)
     p.add_argument("--add_prefix", type=lambda x: x.lower() == "true", default=None)
     p.add_argument("--project", type=str, default="distillation")
+    p.add_argument(
+        "--student_model",
+        type=str,
+        default=None,
+        help="Override base student model (for DeepSpeed ckpts without W&B config)",
+    )
     p.add_argument("--reuse_cached", action="store_true", help="Reuse cached results in mteb_eval instead of recomputing")
     p.add_argument("--cached_only", action="store_true", help="Skip evaluation; only push from existing mteb_eval results")
     args = p.parse_args()
@@ -86,6 +92,7 @@ def main():
                 num_workers=args.num_workers,
                 add_prefix=args.add_prefix,
                 project=args.project,
+                student_model=args.student_model,
                 reuse_cached=args.reuse_cached,
                 cached_only=args.cached_only,
             )

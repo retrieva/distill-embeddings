@@ -20,6 +20,8 @@ cd "${REPO_ROOT}"
 ROOT=${ROOT:-"output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B"}
 # Under this ROOT, experiments live at <data_size>/<code_name>
 PATTERN=${PATTERN:-"1794545/*"}
+# Optional: base student model (HF id). If unset, infer from ROOT's first segment
+STUDENT=${STUDENT:-}
 EPOCH=${EPOCH:-}
 BENCHMARK=${BENCHMARK:-"MTEB(eng, v2)"}
 LANGUAGE=${LANGUAGE:-}
@@ -46,6 +48,7 @@ Env vars:
   NUM_WORKERS  Override num_workers for evaluation (optional)
   ADD_PREFIX   Force add_prefix true|false (optional)
   PROJECT      W&B project (default: distillation)
+  STUDENT      Base student model HF id (e.g., nomic-ai/modernbert-embed-base-unsupervised)
 USAGE
 }
 
@@ -63,6 +66,15 @@ extra=()
 [[ -n "$CACHED_ONLY" ]] && extra+=(--cached_only)
 [[ -n "$ENTITY" ]] && extra+=(--entity "$ENTITY")
 [[ -n "$RESUME_MODE" ]] && extra+=(--resume_mode "$RESUME_MODE")
+
+# If STUDENT not set, try inferring from ROOT's first path segment under output/result by replacing first '_' with '/'
+if [[ -z "$STUDENT" ]]; then
+  first_seg="$(echo "$ROOT" | sed -E 's#^output/result/([^/]+)/.*#\1#')"
+  if [[ "$first_seg" != "$ROOT" ]]; then
+    STUDENT="${first_seg/_//}"
+  fi
+fi
+[[ -n "$STUDENT" ]] && extra+=(--student_model "$STUDENT")
 
 uv run python -m src.evaluation.posthoc_eval_batch \
   --root "$ROOT" \
