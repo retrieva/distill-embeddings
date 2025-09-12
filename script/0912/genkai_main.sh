@@ -1,7 +1,7 @@
 #!/bin/sh
-#PJM -L rscgrp=C-batch
+#PJM -L rscgrp=c-batch
 #PJM -L node=1
-#PJM -L elapse=24:00:00
+#PJM -L elapse=40:00:00
 #PJM -j
 #PJM -o logs/0912/genkai_main.log
 
