@@ -3,14 +3,14 @@
 #PJM -L gpu=1
 #PJM -L elapse=20:00:00
 #PJM -j
-#PJM -o logs/final/04.log
+#PJM -o logs/final/22.log
 
 module load cuda cudnn nccl gcc
 
 nvidia-smi
 export SSL_CERT_FILE=$(uv run python -c "import certifi; print(certifi.where())")
 
-for loss_type in "mse"; do
+for loss_type in "taid-mse"; do
     for lr in 1e-4; do
         for distill_weight in 1.0;do
             uv run python -m src.training.train \
