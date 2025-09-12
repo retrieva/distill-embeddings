@@ -33,6 +33,7 @@ REUSE_CACHED=${REUSE_CACHED:-}
 CACHED_ONLY=${CACHED_ONLY:-}
 ENTITY=${ENTITY:-}
 RESUME_MODE=${RESUME_MODE:-}
+SKIP_IF_EXISTS=${SKIP_IF_EXISTS:-}
 
 usage() {
   cat <<USAGE
@@ -66,6 +67,7 @@ extra=()
 [[ -n "$CACHED_ONLY" ]] && extra+=(--cached_only)
 [[ -n "$ENTITY" ]] && extra+=(--entity "$ENTITY")
 [[ -n "$RESUME_MODE" ]] && extra+=(--resume_mode "$RESUME_MODE")
+[[ -n "$SKIP_IF_EXISTS" ]] && extra+=(--skip_if_exists)
 
 # If STUDENT not set, try inferring from ROOT's first path segment under output/result by replacing first '_' with '/'
 if [[ -z "$STUDENT" ]]; then

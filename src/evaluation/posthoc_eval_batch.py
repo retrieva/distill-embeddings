@@ -38,6 +38,24 @@ def summary_has_mteb(exp_dir: Path, prefix: str = "mteb_final/") -> bool:
     return any(k.startswith(prefix) for k in data.keys())
 
 
+def dir_has_mteb(exp_dir: Path) -> bool:
+    """Return True if local cached MTEB results exist under mteb_eval/.
+
+    We check for any results.json files under mteb_eval recursively to avoid false positives
+    from empty directories.
+    """
+    eval_dir = exp_dir / "mteb_eval"
+    if not eval_dir.exists():
+        return False
+    try:
+        for p in eval_dir.rglob("*.json"):
+            if p.name == "results.json" or p.name.endswith("results.json"):
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def main():
     p = argparse.ArgumentParser(description="Batch posthoc MTEB eval and push to W&B summary")
     p.add_argument("--root", type=str, default="output/result", help="Root of experiments")
@@ -83,6 +101,23 @@ def main():
                 skipped += 1
                 continue
         try:
+            # Auto policy: if not explicitly directed, skip or use cached when possible
+            if not args.reuse_cached and not args.cached_only and not args.skip_if_exists:
+                if summary_has_mteb(exp):
+                    print(f"[auto-skip exists] {exp}")
+                    skipped += 1
+                    continue
+                if dir_has_mteb(exp):
+                    # Prefer pushing cached-only to avoid re-encoding
+                    cached_only = True
+                    reuse_cached = False
+                else:
+                    cached_only = args.cached_only
+                    reuse_cached = args.reuse_cached
+            else:
+                cached_only = args.cached_only
+                reuse_cached = args.reuse_cached
+
             run_eval_and_update_wandb(
                 ckpt_path=ckpt,
                 run_id=None,
@@ -93,8 +128,8 @@ def main():
                 add_prefix=args.add_prefix,
                 project=args.project,
                 student_model=args.student_model,
-                reuse_cached=args.reuse_cached,
-                cached_only=args.cached_only,
+                reuse_cached=reuse_cached,
+                cached_only=cached_only,
             )
             processed += 1
         except Exception as e:
