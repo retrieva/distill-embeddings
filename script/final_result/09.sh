@@ -44,10 +44,11 @@ for loss_type in "kld"; do
                 --taid_alpha 5e-04 \
                 --loss_type "$loss_type" \
                 --add_prefix True \
-                --gradient_checkpointing True \
+                --gradient_checkpointing False \
                 --chunk_parts 4 \
                 --distill_weight "$distill_weight" \
                 --strategy deepspeed \
+                --max_neg_per_sample 1 \
                 --lr "$lr"
         done
     done
