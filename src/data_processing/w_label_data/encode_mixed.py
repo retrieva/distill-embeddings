@@ -263,7 +263,6 @@ def main(args: argparse.Namespace):
         parts_texts.append(short_texts)
         parts_feats.append(short_feats)
 
-    from datasets import concatenate_datasets
     all_texts = concatenate_datasets(parts_texts) if len(parts_texts) > 1 else parts_texts[0]
     all_features = np.vstack(parts_feats) if len(parts_feats) > 1 else parts_feats[0]
     assert len(all_texts) == len(all_features), f"Combined data size mismatch: {len(all_texts)} vs {len(all_features)}"
