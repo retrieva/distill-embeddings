@@ -8,7 +8,7 @@ nvidia-smi
 export SSL_CERT_FILE=$(uv run python -c "import certifi; print(certifi.where())")
 
 
-uv run python -m src.data_processing.w_label_data.encode_mixed \
+CUDA_VISIBLE_DEVICES=7 uv run python -m src.data_processing.w_label_data.encode_mixed \
     --base-dir data/w_label_data/mixed_triplets_hf \
     --output-dir data/w_label_data/Qwen_Qwen3-Embedding-4B_encoded \
     --teacher-model Qwen/Qwen3-Embedding-4B \
