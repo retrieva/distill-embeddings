@@ -437,7 +437,16 @@ def run_eval_and_update_wandb(
             "If this is an existing cloud run, ensure the correct entity/project. "
             "Otherwise set --resume_mode allow to create if missing."
         )
-    wandb.run.summary.update(final_summary)
+    try:
+        wandb.run.summary.update(final_summary)
+    except Exception:
+        # Try to identify a corrupt local W&B JSON and surface only its path
+        try:
+            _preflight_wandb_json(output_base)
+        except ValueError as ve:
+            raise ValueError(str(ve))
+        # If nothing obvious found, re-raise original exception
+        raise
     print(f"Updated W&B summary for run {run_id}")
     for k, v in sorted(final_summary.items()):
         print(f"  {k}: {v}")
