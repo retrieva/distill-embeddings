@@ -6,7 +6,6 @@ from pathlib import Path
 import torch
 from datasets import Dataset, concatenate_datasets, load_from_disk
 from sentence_transformers import SentenceTransformer
-from transformers import AutoTokenizer
 
 from src.data_processing.encode_utils import (
     encode_with_checkpoint,
@@ -148,21 +147,9 @@ def main(args: argparse.Namespace):
     long_texts = enc_ds.filter(lambda x: x["len"] > args.threshold)
     non_long = enc_ds.filter(lambda x: x["len"] <= args.threshold)
 
-    # Medium bucket: texts whose tokenized length fits within medium_threshold (default: 128)
-    # Use teacher tokenizer to measure token length without truncation
-    logger.info("Tokenizing to compute token lengths for medium split...")
-    tokenizer = AutoTokenizer.from_pretrained(args.teacher_model, use_fast=True)
-
-    def add_tok_len(batch):
-        toks = tokenizer(batch["text"], add_special_tokens=True, truncation=False)
-        return {"tok_len": [len(ids) for ids in toks["input_ids"]]}
-
-    non_long = non_long.map(add_tok_len, batched=True, batch_size=1024, desc="compute tok_len")
-    medium_texts = non_long.filter(lambda x: x["tok_len"] <= args.medium_threshold)
-    short_texts = non_long.filter(lambda x: x["tok_len"] > args.medium_threshold)
-    # Drop helper column to keep schemas aligned for concatenation
-    medium_texts = medium_texts.remove_columns([c for c in ["tok_len"] if c in medium_texts.column_names])
-    short_texts = short_texts.remove_columns([c for c in ["tok_len"] if c in short_texts.column_names])
+    # Medium bucket by character length threshold (fast; no tokenization)
+    medium_texts = non_long.filter(lambda x: x["len"] <= args.medium_threshold)
+    short_texts = non_long.filter(lambda x: x["len"] > args.medium_threshold)
 
     logger.info(f"Long={len(long_texts)}, Medium={len(medium_texts)}, Short={len(short_texts)}")
 
