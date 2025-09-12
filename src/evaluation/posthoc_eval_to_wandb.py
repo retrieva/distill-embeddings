@@ -154,9 +154,12 @@ def _preflight_wandb_json(output_base: Path) -> None:
     ]
     # Also check the newest run-*/files/wandb-metadata.json
     try:
-        runs = sorted((wdir.glob("run-*/files/wandb-metadata.json")))
-        if runs:
-            cand.append(runs[-1])
+        meta_runs = sorted((wdir.glob("run-*/files/wandb-metadata.json")))
+        if meta_runs:
+            cand.append(meta_runs[-1])
+        sum_runs = sorted((wdir.glob("run-*/files/wandb-summary.json")))
+        if sum_runs:
+            cand.append(sum_runs[-1])
     except Exception:
         pass
     for p in cand:
@@ -422,7 +425,13 @@ def run_eval_and_update_wandb(
     try:
         wandb.init(project=proj, entity=ent, id=run_id, resume=resume_mode, dir=str(output_base))
     except Exception as e:
-        # Helpful diagnostics
+        # If W&B init fails due to local JSON corruption, try to pinpoint the file
+        try:
+            _preflight_wandb_json(output_base)
+        except ValueError as ve:
+            # Surface only the problematic file path, per user request
+            raise ValueError(str(ve))
+        # Helpful diagnostics if no specific file found
         raise RuntimeError(
             f"wandb.init failed with resume={resume_mode}, project={proj}, entity={ent}, id={run_id}: {e}. "
             "If this is an existing cloud run, ensure the correct entity/project. "
