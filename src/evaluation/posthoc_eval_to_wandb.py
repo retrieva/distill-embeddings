@@ -117,12 +117,59 @@ def _find_first_weight_file(root: Path) -> Path | None:
     return files[0]
 
 
+def _safe_json_check(path: Path) -> None:
+    """Validate that a JSON file exists and is decodable.
+
+    If decoding fails or the file is empty, raise ValueError with the path as message so
+    callers can surface only the filename that caused the issue.
+    """
+    if not path.exists() or not path.is_file():
+        return
+    try:
+        txt = path.read_text()
+    except Exception:
+        # If unreadable, surface the path to aid debugging
+        raise ValueError(str(path))
+    if not txt.strip():
+        raise ValueError(str(path))
+    try:
+        json.loads(txt)
+    except Exception:
+        # Re-raise with only the path as message per user request
+        raise ValueError(str(path))
+
+
+def _preflight_wandb_json(output_base: Path) -> None:
+    """Best-effort preflight to detect broken local W&B JSON files.
+
+    Checks common files that, if corrupted/empty, often cause JSON decode errors during
+    wandb.init. Raises ValueError with the problematic path if a failure is detected.
+    """
+    wdir = output_base / "wandb"
+    latest = wdir / "latest-run"
+    # Typical files used by W&B local state
+    cand = [
+        latest / "files" / "wandb-metadata.json",
+        latest / "files" / "wandb-summary.json",
+    ]
+    # Also check the newest run-*/files/wandb-metadata.json
+    try:
+        runs = sorted((wdir.glob("run-*/files/wandb-metadata.json")))
+        if runs:
+            cand.append(runs[-1])
+    except Exception:
+        pass
+    for p in cand:
+        _safe_json_check(p)
+
+
 def _merge_deepspeed_shards(ckpt_dir: Path) -> Path:
     """Run zero_to_fp32.py; return path to merged output (file or directory)."""
     zero_script = ckpt_dir / "zero_to_fp32.py"
     if not zero_script.exists():
         raise RuntimeError(f"DeepSpeed checkpoint at {ckpt_dir} missing zero_to_fp32.py")
     import sys as _sys
+
     tmpdir = tempfile.mkdtemp(prefix="ds_merge_")
     merged_path = Path(tmpdir) / "pytorch_model.bin"
     cmd = [_sys.executable, str(zero_script), str(ckpt_dir), str(merged_path)]
@@ -170,7 +217,9 @@ def _extract_student_state_dict(full_sd: dict) -> dict:
     return out
 
 
-def _load_student_from_ds_dir(ckpt_dir: Path, output_base: Path, base_model_override: str | None = None) -> tuple[SentenceTransformer, dict]:
+def _load_student_from_ds_dir(
+    ckpt_dir: Path, output_base: Path, base_model_override: str | None = None
+) -> tuple[SentenceTransformer, dict]:
     cfg = _load_wandb_config(output_base)
     base_model = base_model_override or cfg.get("student_model")
     if not base_model:
@@ -208,7 +257,9 @@ def _load_student_from_ds_dir(ckpt_dir: Path, output_base: Path, base_model_over
     return model, hp
 
 
-def _load_student_from_ckpt(ckpt_path: Path, base_model_override: str | None = None) -> tuple[SentenceTransformer, dict]:
+def _load_student_from_ckpt(
+    ckpt_path: Path, base_model_override: str | None = None
+) -> tuple[SentenceTransformer, dict]:
     if ckpt_path.is_dir():
         output_base = _infer_output_base_from_ckpt(ckpt_path)
         return _load_student_from_ds_dir(ckpt_path, output_base, base_model_override)
@@ -239,7 +290,11 @@ def _collect_cached_mteb_scores(output_folder: Path) -> dict[str, float]:
         scores = d.get("scores")
         if isinstance(scores, list):
             for entry in scores:
-                if isinstance(entry, dict) and entry.get("split") == "test" and isinstance(entry.get("main_score"), (int, float)):
+                if (
+                    isinstance(entry, dict)
+                    and entry.get("split") == "test"
+                    and isinstance(entry.get("main_score"), (int, float))
+                ):
                     return float(entry["main_score"])
             for entry in scores:
                 if isinstance(entry, dict) and isinstance(entry.get("main_score"), (int, float)):
@@ -348,6 +403,8 @@ def run_eval_and_update_wandb(
 
     # WandB update
     if not run_id:
+        # Preflight only when we need to infer or rely on local latest-run
+        _preflight_wandb_json(output_base)
         run_id = _infer_run_id(output_base)
     if not run_id:
         meta = output_base / "wandb" / "latest-run" / "files" / "wandb-metadata.json"
@@ -403,9 +460,17 @@ def main():
     )
     p.add_argument("--project", type=str, default="distillation", help="W&B project name")
     p.add_argument("--entity", type=str, default=None, help="W&B entity (user or team)")
-    p.add_argument("--student_model", type=str, default=None, help="Override base student model (for DS ckpts without W&B config)")
-    p.add_argument("--reuse_cached", action="store_true", help="Reuse cached MTEB results under mteb_eval instead of recomputing")
-    p.add_argument("--cached_only", action="store_true", help="Do not run evaluation; only read existing mteb_eval results and push to W&B")
+    p.add_argument(
+        "--student_model", type=str, default=None, help="Override base student model (for DS ckpts without W&B config)"
+    )
+    p.add_argument(
+        "--reuse_cached", action="store_true", help="Reuse cached MTEB results under mteb_eval instead of recomputing"
+    )
+    p.add_argument(
+        "--cached_only",
+        action="store_true",
+        help="Do not run evaluation; only read existing mteb_eval results and push to W&B",
+    )
     p.add_argument("--resume_mode", type=str, default="must", choices=["must", "allow"], help="W&B resume behavior")
     args = p.parse_args()
 
