@@ -148,8 +148,9 @@ def main(args: argparse.Namespace):
     non_long = enc_ds.filter(lambda x: x["len"] <= args.threshold)
 
     # Medium bucket by character length threshold (fast; no tokenization)
-    medium_texts = non_long.filter(lambda x: x["len"] <= args.medium_threshold)
-    short_texts = non_long.filter(lambda x: x["len"] > args.medium_threshold)
+    # short: len <= medium_threshold, medium: medium_threshold < len <= threshold
+    short_texts = non_long.filter(lambda x: x["len"] <= args.medium_threshold)
+    medium_texts = non_long.filter(lambda x: x["len"] > args.medium_threshold)
 
     logger.info(f"Long={len(long_texts)}, Medium={len(medium_texts)}, Short={len(short_texts)}")
 
