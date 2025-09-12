@@ -10,9 +10,9 @@ export SSL_CERT_FILE=$(uv run python -c "import certifi; print(certifi.where())"
 # Config
 LANGUAGE=${LANGUAGE:-eng}
 BENCHMARK_NAME=${BENCHMARK_NAME:-"MTEB(eng, v2)"}
-BATCH_SIZE=${BATCH_SIZE:-128}
+BATCH_SIZE=${BATCH_SIZE:-16}
 NUM_WORKERS=${NUM_WORKERS:-4}
-ADD_PREFIX=${ADD_PREFIX:-true}
+ADD_PREFIX=${ADD_PREFIX:-false}
 TASK_SORT=${TASK_SORT:-category_alpha}   # category_alpha | alpha | none
 # Tasks to drop from outputs (comma-separated)
 DROP_TASKS=${DROP_TASKS:-"Touche2020Retrieval.v3,ToxicConversationsClassification,TweetSentimentExtractionClassification,TwentyNewsgroupsClustering.v2,TwitterSemEval2015,TwitterURLCorpus"}
