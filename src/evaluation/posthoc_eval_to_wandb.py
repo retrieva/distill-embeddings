@@ -56,19 +56,38 @@ def _infer_run_id(output_base: Path) -> str | None:
         return env_rid
 
     # Try W&B latest-run metadata
-    meta = output_base / "wandb" / "latest-run" / "files" / "wandb-metadata.json"
+    latest = output_base / "wandb" / "latest-run"
+    meta = latest / "files" / "wandb-metadata.json"
     if meta.exists():
         rid = _read_run_id_from_metadata(meta)
         if rid:
             return rid
+        # Fallback: parse from directory name pattern run-*-<id>
+        try:
+            # Resolve symlink to real run dir, then use its basename
+            real_run_dir = latest.resolve().name
+            m = re.match(r"run-[^/]+-([A-Za-z0-9]+)$", real_run_dir)
+            if m and m.group(1) != "null":
+                return m.group(1)
+        except Exception:
+            pass
     # Try glob any run directory and pick the newest
     wandb_dir = output_base / "wandb"
     if wandb_dir.exists():
         runs = sorted(wandb_dir.glob("run-*/files/wandb-metadata.json"))
         if runs:
+            # Prefer newest
             rid = _read_run_id_from_metadata(runs[-1])
             if rid:
                 return rid
+            # Parse from parent dir suffix as fallback
+            try:
+                parent = runs[-1].parent.parent.name  # run-YYYY...-<id>
+                m = re.match(r"run-[^/]+-([A-Za-z0-9]+)$", parent)
+                if m and m.group(1) != "null":
+                    return m.group(1)
+            except Exception:
+                pass
     return None
 
 
