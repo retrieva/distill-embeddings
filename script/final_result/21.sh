@@ -10,7 +10,7 @@ module load cuda cudnn nccl gcc
 nvidia-smi
 export SSL_CERT_FILE=$(uv run python -c "import certifi; print(certifi.where())")
 
-for loss_type in "js"; do
+for loss_type in "taid-js"; do
     for lr in 1e-4; do
         for distill_weight in 1.0;do
             uv run python -m src.training.train \
