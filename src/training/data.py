@@ -82,6 +82,7 @@ class TaskBatchDataset(Dataset):
         per_rank_batch_size: int,  # 変更: per-rank のBS
         world_size: int,  # 追加
         max_effective_pairs_per_rank: int | None = None,  # 追加: 動的BS用の上限（B*C）
+        max_neg_per_sample: int | None = None,  # 追加: K の上限
         drop_last=False,
         shuffle_within_task=True,
         shuffle_task_batches=True,
@@ -95,6 +96,11 @@ class TaskBatchDataset(Dataset):
         self.max_effective_pairs_per_rank = (
             int(max_effective_pairs_per_rank)
             if max_effective_pairs_per_rank and max_effective_pairs_per_rank > 0
+            else None
+        )
+        self.max_neg_per_sample = (
+            int(max_neg_per_sample)
+            if max_neg_per_sample is not None and int(max_neg_per_sample) > 0
             else None
         )
         self.drop_last = drop_last
@@ -153,6 +159,9 @@ class TaskBatchDataset(Dataset):
                 if self.max_effective_pairs_per_rank is not None and len(window) > 0:
                     # このウィンドウ内の最小K（全サンプルが共通して持つneg数）
                     k_min = int(self._neg_len[window].min()) if len(window) > 0 else 0
+                    # K の上限を考慮
+                    if self.max_neg_per_sample is not None:
+                        k_min = min(k_min, int(self.max_neg_per_sample))
                     C = 1 + max(0, k_min)
                     if C > 1:
                         eff_per_rank = max(1, min(self.per_rank_batch_size, self.max_effective_pairs_per_rank // C))
@@ -199,6 +208,13 @@ class TaskBatchDataset(Dataset):
 
         if not items:
             return items
+        # 先に per-sample 上限を適用
+        if self.max_neg_per_sample is not None:
+            for it in items:
+                if len(it["neg"]) > int(self.max_neg_per_sample):
+                    it["neg"] = it["neg"][: int(self.max_neg_per_sample)]
+                    it["neg_features"] = it["neg_features"][: int(self.max_neg_per_sample)]
+
         K = min(len(it["neg"]) for it in items)
 
         # そろえる（K=0 ならそのまま）
@@ -304,6 +320,7 @@ class DataModuleForDistill(L.LightningDataModule):
         seed: int = 42,
         chunk_parts: int = 4,
         max_effective_pairs_per_rank: int | None = None,
+        max_neg_per_sample: int | None = None,
     ):
         super().__init__()
         self.data_dir = data_dir
@@ -318,6 +335,9 @@ class DataModuleForDistill(L.LightningDataModule):
             int(max_effective_pairs_per_rank)
             if max_effective_pairs_per_rank and max_effective_pairs_per_rank > 0
             else None
+        )
+        self.max_neg_per_sample = (
+            int(max_neg_per_sample) if max_neg_per_sample is not None and int(max_neg_per_sample) > 0 else None
         )
 
         if ("triplet" in str(self.data_dir)) or ("gte" in str(self.data_dir)):
@@ -380,6 +400,7 @@ class DataModuleForDistill(L.LightningDataModule):
             per_rank_batch_size=self.per_rank_batch_size,
             world_size=world_size,
             max_effective_pairs_per_rank=self.max_effective_pairs_per_rank,
+            max_neg_per_sample=self.max_neg_per_sample,
             drop_last=True,
             shuffle_within_task=True,
             shuffle_task_batches=True,
@@ -391,6 +412,7 @@ class DataModuleForDistill(L.LightningDataModule):
             per_rank_batch_size=self.eval_batch_size,
             world_size=world_size,
             max_effective_pairs_per_rank=self.max_effective_pairs_per_rank,
+            max_neg_per_sample=self.max_neg_per_sample,
             drop_last=True,
             shuffle_within_task=False,
             shuffle_task_batches=False,

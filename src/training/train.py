@@ -73,6 +73,7 @@ if __name__ == "__main__":
         add_prefix=args.add_prefix,
         chunk_parts=args.chunk_parts,
         max_effective_pairs_per_rank=args.max_effective_pairs_per_rank,
+        max_neg_per_sample=(args.max_neg_per_sample if getattr(args, "max_neg_per_sample", 0) else None),
     )
 
     modelcheckpoint = ModelCheckpoint(

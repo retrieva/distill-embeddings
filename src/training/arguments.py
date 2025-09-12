@@ -50,6 +50,15 @@ def parse_args():
         default=4,
         help="Split each batch into this many chunks to reduce peak memory (affects tokenization/forward).",
     )
+    data_args.add_argument(
+        "--max_neg_per_sample",
+        type=int,
+        default=0,
+        help=(
+            "Cap the number of negatives per sample (K). "
+            "0 disables the cap and uses all available negatives."
+        ),
+    )
 
     # --- Training Arguments ---
     training_args = parser.add_argument_group("Training Arguments")
