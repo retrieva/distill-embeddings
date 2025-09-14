@@ -99,29 +99,37 @@ OUT_DIR_BASE="${BASE}/${DATA_NAME}_e${EPOCHS}_bs*_wsd*_${LOSS}*"
 STRATEGY_ARGS="--strategy deepspeed"
 if [ ! -f "${CKPT}" ]; then
   echo "last.ckpt is not a regular file (Looked at: ${CKPT})"
-  echo "Trying to resume from a DeepSpeed-style directory checkpoint (if available)..."
+  echo "Trying to locate a usable checkpoint (file or DeepSpeed dir)..."
+  # 1) If CKPT is actually a directory, use it (DeepSpeed style)
   if [ -d "${CKPT}" ]; then
-    # Use the directory directly with Lightning + DeepSpeed to restore optim/scheduler
     DS_DIR="${CKPT}"
     CKPT="${DS_DIR}"
   else
-    # Probe common DS checkpoint layouts
-    DS_DIR=$(ls -1dt ${OUT_DIR_BASE}/checkpoints/* 2>/dev/null | head -n 1 || true)
-    if [ -z "${DS_DIR}" ]; then
-      DS_DIR=$(ls -1dt ${OUT_DIR_BASE}/checkpoints 2>/dev/null | head -n 1 || true)
+    # 2) Prefer the most recent single-file .ckpt if available
+    CKPT_FILE=$(ls -1dt ${OUT_DIR_BASE}/checkpoints/*.ckpt 2>/dev/null | head -n 1 || true)
+    if [ -n "${CKPT_FILE}" ] && [ -f "${CKPT_FILE}" ]; then
+      echo "Found checkpoint file: ${CKPT_FILE}"
+      CKPT="${CKPT_FILE}"
+    else
+      # 3) Fallback to a DeepSpeed directory under checkpoints/
+      DS_DIR=$(ls -1dt ${OUT_DIR_BASE}/checkpoints/*/ 2>/dev/null | head -n 1 || true)
+      if [ -z "${DS_DIR}" ]; then
+        DS_DIR=$(ls -1dt ${OUT_DIR_BASE}/checkpoints 2>/dev/null | head -n 1 || true)
+      fi
+      if [ -z "${DS_DIR}" ]; then
+        echo "No checkpoint file or DeepSpeed checkpoint directory found. Cannot resume."
+        exit 1
+      fi
+      echo "Found DeepSpeed checkpoint dir: ${DS_DIR}"
+      CKPT="${DS_DIR}"
     fi
   fi
-  if [ -z "${DS_DIR}" ]; then
-    echo "No DeepSpeed checkpoint directory found either. Cannot resume."
-    exit 1
+  # If resuming from a DS directory, keep deepspeed strategy; if from file, train.py may disable DS.
+  # OUT_DIR should be the run root that contains the wandb dir
+  OUT_DIR=$(dirname "${CKPT%/}")
+  if [ ! -d "${OUT_DIR}/wandb" ]; then
+    OUT_DIR=$(dirname "${OUT_DIR}")
   fi
-  if [ -z "${STRATEGY_ARGS}" ]; then
-    # DS directory found via probe; resume with DeepSpeed directly
-    echo "Found DS checkpoint dir: ${DS_DIR}"
-    CKPT="${DS_DIR}"
-    STRATEGY_ARGS="--strategy deepspeed"
-  fi
-  OUT_DIR=$(dirname "${DS_DIR}")
 else
   OUT_DIR=$(dirname "${CKPT}")
 fi
