@@ -55,16 +55,16 @@ run_job() {
 # Launch jobs concurrently; GPU conflicts serialize via locks
 run_job "7" logs/encode_clus.log bash script/genkai_encode_clus_en_single.sh
 run_job "0,1" logs/preprocess.log bash script/preprocess.sh
-
-# 以下resumeしたい人たち
 run_job "3,4" logs/0912/resume_09.log bash script/0912/resume_09.sh
-run_job "6" logs/final/13.log bash script/final_result/25.sh
-
-run_job "3" logs/final/22.log bash script/final_result/22.sh
-run_job "5" logs/final/04.log bash script/final_result/04.sh
-run_job "4" logs/final/14.log bash script/final_result/14.sh
+run_job "5,6" logs/final/26.log bash script/final_result/26.sh
 run_job "3,4,5,6" logs/final/23.log bash script/final_result/23.sh
 run_job "3,4,5,6" logs/final/24.log bash script/final_result/24.sh
+
+
+run_job "6" logs/final/25.log bash script/final_result/25.sh
+run_job "5" logs/final/27.log bash script/final_result/27.sh
+
+
 
 # Wait for all jobs and exit non-zero if any failed
 FAIL=0
