@@ -3,7 +3,7 @@
 #PJM -L node=1
 #PJM -L elapse=24:00:00
 #PJM -j
-#PJM -o logs/0912/genkai_main.log
+#PJM -o logs/0916/genkai_main03.log
 
 module load cuda cudnn nccl gcc
 
