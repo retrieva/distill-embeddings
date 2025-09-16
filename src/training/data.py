@@ -226,6 +226,68 @@ class TaskBatchDataset(Dataset):
         return items
 
 
+class AncOnlyBatchDataset(Dataset):
+    """
+    Simple batch dataset for anc-only data (e.g., finweb) that contains
+    only `text` and `emb_idx` (or possibly `anc` and `anc_emb_idx`).
+
+    It groups records into global-sized chunks so that our collator can
+    perform per-rank slicing consistently (DataLoader uses batch_size=1).
+    """
+
+    def __init__(
+        self,
+        hf_dataset,
+        per_rank_batch_size: int,
+        world_size: int,
+        drop_last: bool = True,
+        shuffle: bool = True,
+        seed: int = 42,
+    ):
+        self.hf_dataset = hf_dataset
+        self.per_rank_batch_size = int(per_rank_batch_size)
+        self.world_size = int(world_size)
+        self.global_batch_size = self.per_rank_batch_size * self.world_size
+        self.drop_last = drop_last
+        self.shuffle = shuffle
+        self.seed = seed
+        self._batches: list[list[int]] = []
+        self.rebuild_batches(0)
+
+    def rebuild_batches(self, epoch: int):
+        rng = random.Random(self.seed + epoch)
+        idxs = list(range(len(self.hf_dataset)))
+        if self.shuffle:
+            rng.shuffle(idxs)
+        self._batches = []
+        j = 0
+        N = len(idxs)
+        group_size = self.global_batch_size
+        while j < N:
+            chunk = idxs[j : min(j + group_size, N)]
+            if len(chunk) < group_size and self.drop_last:
+                break
+            self._batches.append(chunk)
+            j += len(chunk)
+
+    def __len__(self):
+        return len(self._batches)
+
+    def __getitem__(self, bidx):
+        idxs = self._batches[bidx]
+        items = []
+        for i in idxs:
+            rec = self.hf_dataset[i]
+            items.append(
+                {
+                    "anc": rec.get("anc", rec.get("text", "")),
+                    "anc_emb_idx": rec.get("anc_emb_idx", rec.get("emb_idx")),
+                    "subset": rec.get("subset", "finweb"),
+                }
+            )
+        return items
+
+
 @dataclass
 class DataCollatorForContrastiveDistill:
     tokenizer: PreTrainedTokenizer
@@ -306,6 +368,66 @@ class DataCollatorForContrastiveDistill:
         )
 
 
+@dataclass
+class DataCollatorForAncOnly:
+    """
+    Collator for datasets that only have `text` and `emb_idx`.
+
+    - Treats `text` as anchors (anc)
+    - Looks up teacher features from `embeddings[emb_idx]`
+    - Does not provide pos/neg (use with args.use_pos=False)
+    """
+
+    tokenizer: PreTrainedTokenizer
+    embeddings: np.ndarray
+    max_length: int = 4096
+    num_chunk: int = 4
+    per_rank_batch_size: int = 32
+
+    def preprocess(self, texts):
+        return self.tokenizer(
+            texts,
+            padding=True,
+            truncation=True,
+            max_length=self.max_length,
+            return_tensors="pt",
+        )
+
+    def __call__(self, samples):
+        # Support both standard list[dict] and a pre-batched list[[dict,...]]
+        if len(samples) == 1 and isinstance(samples[0], list):
+            samples = samples[0]
+
+        # Dynamic per-rank slicing (mirror contrastive collator behavior)
+        rank = get_rank_safe()
+        world_size = get_world_size_safe()
+        dynamic_per_rank = max(1, len(samples) // max(1, world_size))
+        start = rank * dynamic_per_rank
+        end = start + dynamic_per_rank
+        samples = samples[start:end]
+
+        # Map minimal schema to anc-only
+        anc_text = [s.get("anc", s.get("text", "")) for s in samples]
+        # teacher features from emb_idx (or anc_emb_idx fallback)
+        emb_indices = [s.get("anc_emb_idx", s.get("emb_idx")) for s in samples]
+        anc_feats = [
+            torch.as_tensor(self.embeddings[int(idx)], dtype=torch.float32)
+            for idx in emb_indices
+        ]
+        subsets = [s.get("subset", "unknown") for s in samples]
+
+        return Batch(
+            anc=[self.preprocess(list(a)) for a in divide(self.num_chunk, anc_text)],
+            pos=[],  # no positives
+            teacher_features=anc_feats,
+            pos_features=[],  # no positives
+            subset=subsets,
+            neg=[],  # no negatives
+            neg_features=[],
+            num_neg=0,
+        )
+
+
 class DataModuleForDistill(L.LightningDataModule):
     def __init__(
         self,
@@ -357,6 +479,11 @@ class DataModuleForDistill(L.LightningDataModule):
                 num_chunk=self.chunk_parts,
                 per_rank_batch_size=self.eval_batch_size,  # ← val 用
             )
+        elif ("finweb" in str(self.data_dir).lower()) or ("fineweb" in str(self.data_dir).lower()):
+            # Instantiate after loading embeddings in setup()
+            self.collate_fn_train = None
+            self.collate_fn_val = None
+            self._use_finweb_collator = True
         else:
             raise ValueError(f"Unknown data type in {self.data_dir}")
         self.train_batches_ds: TaskBatchDataset | None = None
@@ -394,30 +521,68 @@ class DataModuleForDistill(L.LightningDataModule):
         world_size = get_world_size_safe()  # ← ここで取得
         logger.info(f"World size: {world_size}")
 
-        self.train_batches_ds = TaskBatchDataset(
-            datasets["train"],
-            embeddings,
-            per_rank_batch_size=self.per_rank_batch_size,
-            world_size=world_size,
-            max_effective_pairs_per_rank=self.max_effective_pairs_per_rank,
-            max_neg_per_sample=self.max_neg_per_sample,
-            drop_last=True,
-            shuffle_within_task=True,
-            shuffle_task_batches=True,
-            seed=self.seed,
-        )
-        self.val_batches_ds = TaskBatchDataset(
-            datasets["test"],
-            embeddings,
-            per_rank_batch_size=self.eval_batch_size,
-            world_size=world_size,
-            max_effective_pairs_per_rank=self.max_effective_pairs_per_rank,
-            max_neg_per_sample=self.max_neg_per_sample,
-            drop_last=True,
-            shuffle_within_task=False,
-            shuffle_task_batches=False,
-            seed=self.seed,
-        )
+        # Choose dataset + collator based on schema/path
+        if getattr(self, "_use_finweb_collator", False) or (
+            set(datasets["train"].column_names) >= {"text", "emb_idx"}
+        ):
+            # Build anc-only collators now that we have embeddings
+            self.collate_fn_train = DataCollatorForAncOnly(
+                tokenizer=self.tokenizer,
+                embeddings=embeddings,
+                max_length=self.tokenizer.model_max_length if hasattr(self.tokenizer, "model_max_length") else 4096,
+                num_chunk=self.chunk_parts,
+                per_rank_batch_size=self.per_rank_batch_size,
+            )
+            self.collate_fn_val = DataCollatorForAncOnly(
+                tokenizer=self.tokenizer,
+                embeddings=embeddings,
+                max_length=self.tokenizer.model_max_length if hasattr(self.tokenizer, "model_max_length") else 4096,
+                num_chunk=self.chunk_parts,
+                per_rank_batch_size=self.eval_batch_size,
+            )
+
+            self.train_batches_ds = AncOnlyBatchDataset(
+                datasets["train"],
+                per_rank_batch_size=self.per_rank_batch_size,
+                world_size=world_size,
+                drop_last=True,
+                shuffle=True,
+                seed=self.seed,
+            )
+            self.val_batches_ds = AncOnlyBatchDataset(
+                datasets["test"],
+                per_rank_batch_size=self.eval_batch_size,
+                world_size=world_size,
+                drop_last=True,
+                shuffle=False,
+                seed=self.seed,
+            )
+        else:
+            # Default contrastive dataset path
+            self.train_batches_ds = TaskBatchDataset(
+                datasets["train"],
+                embeddings,
+                per_rank_batch_size=self.per_rank_batch_size,
+                world_size=world_size,
+                max_effective_pairs_per_rank=self.max_effective_pairs_per_rank,
+                max_neg_per_sample=self.max_neg_per_sample,
+                drop_last=True,
+                shuffle_within_task=True,
+                shuffle_task_batches=True,
+                seed=self.seed,
+            )
+            self.val_batches_ds = TaskBatchDataset(
+                datasets["test"],
+                embeddings,
+                per_rank_batch_size=self.eval_batch_size,
+                world_size=world_size,
+                max_effective_pairs_per_rank=self.max_effective_pairs_per_rank,
+                max_neg_per_sample=self.max_neg_per_sample,
+                drop_last=True,
+                shuffle_within_task=False,
+                shuffle_task_batches=False,
+                seed=self.seed,
+            )
 
     def rebuild_train_batches_for_epoch(self, epoch: int):
         if self.train_batches_ds is not None:
