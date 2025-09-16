@@ -1,6 +1,6 @@
 #!/bin/sh
 #PJM -L rscgrp=b-batch
-#PJM -L gpu=2
+#PJM -L gpu=1
 #PJM -L elapse=10:00:00
 #PJM -j
 #PJM -o logs/final/07.log
@@ -25,25 +25,23 @@ echo "Using TORCHINDUCTOR_CACHE_DIR=${TORCHINDUCTOR_CACHE_DIR}"
 
 for loss_type in "kld"; do
     for lr in 1e-4; do
-        for distill_weight in 1.0;do
+        for distill_weight in 0.5;do
             uv run python -m src.training.train \
                 --student_model nomic-ai/modernbert-embed-base-unsupervised \
                 --teacher_model Qwen/Qwen3-Embedding-4B \
-                --data_size 1794550 \
-                --data_name gte_en_plus_w_neg \
-                --batch_size 64 \
+                --data_size 1794545 \
+                --data_name gte_plus \
+                --batch_size 128 \
                 --num_epochs 3 \
                 --max_length 512 \
                 --language eng \
                 --get_id_iso \
                 --use_pos \
-                --use_neg \
-                --max_effective_pairs_per_rank 64 \
                 --mteb_eval \
                 --taid_t_start 0.7 \
                 --taid_alpha 5e-04 \
                 --loss_type "$loss_type" \
-                --add_prefix False \
+                --add_prefix True \
                 --gradient_checkpointing False \
                 --chunk_parts 4 \
                 --distill_weight "$distill_weight" \
