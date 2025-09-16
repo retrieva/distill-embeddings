@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#PJM -L rscgrp=b-batch-mig
+#PJM -L rscgrp=b-batch
 #PJM -L gpu=1
 #PJM -L elapse=20:00:00
 #PJM -j
