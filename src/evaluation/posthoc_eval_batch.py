@@ -7,7 +7,13 @@ from .posthoc_eval_to_wandb import run_eval_and_update_wandb
 
 
 def find_ckpt(exp_dir: Path, epoch: int | None) -> Path | None:
-    """Pick last.ckpt or a specific epoch ckpt if requested."""
+    """Pick last.ckpt or a specific epoch ckpt if requested.
+
+    Supports common filename patterns inside checkpoints/ such as:
+      - "02.ckpt", "2.ckpt"
+      - "epoch=02.ckpt", "epoch=2.ckpt"
+      - "epoch-02.ckpt", "epoch-2.ckpt"
+    """
     if epoch is None:
         last = exp_dir / "last.ckpt"
         if last.exists():
@@ -19,12 +25,20 @@ def find_ckpt(exp_dir: Path, epoch: int | None) -> Path | None:
                 return ckpts[-1]
         return None
     else:
-        # Prefer zero-padded epoch name like 03.ckpt, but try non-padded as fallback
-        cand = exp_dir / "checkpoints" / f"{epoch:02d}.ckpt"
-        if cand.exists():
-            return cand
-        cand = exp_dir / "checkpoints" / f"{epoch}.ckpt"
-        return cand if cand.exists() else None
+        # Check several common naming styles for epoch checkpoints
+        ckpt_dir = exp_dir / "checkpoints"
+        candidates = [
+            ckpt_dir / f"{epoch:02d}.ckpt",
+            ckpt_dir / f"{epoch}.ckpt",
+            ckpt_dir / f"epoch={epoch:02d}.ckpt",
+            ckpt_dir / f"epoch={epoch}.ckpt",
+            ckpt_dir / f"epoch-{epoch:02d}.ckpt",
+            ckpt_dir / f"epoch-{epoch}.ckpt",
+        ]
+        for cand in candidates:
+            if cand.exists():
+                return cand
+        return None
 
 
 def summary_has_mteb(exp_dir: Path, prefix: str = "mteb_final/") -> bool:
