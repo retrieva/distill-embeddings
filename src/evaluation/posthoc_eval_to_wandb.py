@@ -281,12 +281,18 @@ def _load_student_from_ckpt(
 def _collect_cached_mteb_scores(output_folder: Path) -> dict[str, float]:
     """Scan mteb_eval and aggregate main_score per task from existing JSON files.
 
-    Tries to be robust to different MTEB versions by checking several common shapes:
+    Tries to be robust to different MTEB layouts and versions:
+      - Nested per-task directories that contain a results.json file
+      - Flat directories with one JSON per task, e.g., ArguAna.json
+
+    JSON shapes handled:
       - {"scores": [{"split": "test", "main_score": ...}, ...]}
       - {"test": {"main_score": ...}}
       - {"main_score": ...}
 
-    For task name, prefers JSON field 'task_name', else falls back to parent directory name.
+    For task name, prefers JSON field 'task_name'. If unavailable, falls back to:
+      - results.json path: parent directory name (task dir)
+      - per-task JSON path: file stem (e.g., ArguAna)
     """
     results: dict[str, float] = {}
 
@@ -311,9 +317,10 @@ def _collect_cached_mteb_scores(output_folder: Path) -> dict[str, float]:
             return float(d["main_score"])
         return None
 
-    for p in output_folder.rglob("*.json"):
-        if p.name != "results.json" and not p.name.endswith("results.json"):
-            continue
+    json_files = list(output_folder.rglob("*.json"))
+    # Pass 1: results.json files inside per-task folders
+    res_files = [p for p in json_files if p.name == "results.json" or p.name.endswith("results.json")]
+    for p in res_files:
         try:
             data = json.loads(p.read_text())
         except Exception:
@@ -322,7 +329,24 @@ def _collect_cached_mteb_scores(output_folder: Path) -> dict[str, float]:
         task = data.get("task_name") or p.parent.name
         ms = extract_main_score(data)
         if task and ms is not None:
-            # Prefer the latest file seen wins; rglob order is path-sorted, but OK for our use case
+            results[task] = ms
+
+    # Pass 2: fallback to per-task JSON files (e.g., ArguAna.json) when no results.json present
+    other_files = [
+        p
+        for p in json_files
+        if p not in res_files and p.name not in {"model_meta.json"}
+    ]
+    for p in other_files:
+        try:
+            data = json.loads(p.read_text())
+        except Exception:
+            # Skip unreadable JSON
+            continue
+        # Prefer embedded task name; else use filename stem as task id
+        task = data.get("task_name") or p.stem
+        ms = extract_main_score(data)
+        if task and ms is not None and task not in results:
             results[task] = ms
     return results
 
