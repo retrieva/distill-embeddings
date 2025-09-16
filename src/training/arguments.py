@@ -35,7 +35,7 @@ def parse_args():
         "--data_name",
         type=str,
         default="gte",
-        choices=["gte", "triplet", "gte_plus", "gte_en_plus_w_neg"],
+        choices=["gte", "triplet", "gte_plus", "gte_en_plus_w_neg", "fineweb", "w_label_gte"],
         help="name of the data",
     )
     data_args.add_argument(
@@ -54,10 +54,7 @@ def parse_args():
         "--max_neg_per_sample",
         type=int,
         default=0,
-        help=(
-            "Cap the number of negatives per sample (K). "
-            "0 disables the cap and uses all available negatives."
-        ),
+        help=("Cap the number of negatives per sample (K). 0 disables the cap and uses all available negatives."),
     )
 
     # --- Training Arguments ---
@@ -98,8 +95,7 @@ def parse_args():
         type=int,
         default=0,
         help=(
-            "Cap for B*C per rank to mitigate OOM when using negatives. "
-            "0 disables dynamic batch shrinking (default)."
+            "Cap for B*C per rank to mitigate OOM when using negatives. 0 disables dynamic batch shrinking (default)."
         ),
     )
 
