@@ -61,6 +61,28 @@ def main(args):
         tasks = benchmark.tasks
     else:
         raise ValueError(f"Unknown benchmark name: {args.benchmark_name}")
+
+    # Optionally restrict to a subset of tasks by exact name
+    only_tasks_str: str = getattr(args, "only_tasks", "") or ""
+    if only_tasks_str.strip():
+        only_set = {s.strip() for s in only_tasks_str.split(",") if s.strip()}
+        name_to_task = {}
+        resolved = []
+        for t in tasks:
+            n = _safe_task_name(t)
+            if isinstance(n, str) and n:
+                name_to_task[n] = t
+        for name in only_set:
+            t = name_to_task.get(name)
+            if t is not None:
+                resolved.append(t)
+        if not resolved:
+            raise ValueError(
+                f"No tasks matched in --only_tasks. Provided: {sorted(only_set)}.\n"
+                f"Available examples include: {sorted(list(name_to_task.keys()))[:10]} ..."
+            )
+        tasks = resolved
+
     if args.add_prefix:
         model_prompts = {
             PromptType.query.value: "query: ",
@@ -219,6 +241,12 @@ if __name__ == "__main__":
         type=str,
         default="",
         help="除外するタスク名をカンマ区切りで指定 (例: Touche2020Retrieval.v3,ToxicConversationsClassification)",
+    )
+    parser.add_argument(
+        "--only_tasks",
+        type=str,
+        default="",
+        help="このリストに含まれるタスクのみを実行（カンマ区切り・完全一致）",
     )
     args = parser.parse_args()
     main(args)
