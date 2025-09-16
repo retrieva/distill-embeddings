@@ -298,11 +298,18 @@ class DataCollatorForContrastiveDistill:
     per_rank_batch_size: int = 32  # ★追加
 
     def preprocess(self, texts):
+        # Guard against absurdly large tokenizer.model_max_length sentinels (e.g., 1e30)
+        try:
+            safe_max_len = int(self.max_length)
+        except Exception:
+            safe_max_len = 4096
+        if safe_max_len <= 0 or safe_max_len > 100_000:
+            safe_max_len = 4096
         return self.tokenizer(
             texts,
             padding=True,
             truncation=True,
-            max_length=self.max_length,
+            max_length=safe_max_len,
             return_tensors="pt",
         )
 
@@ -451,6 +458,7 @@ class DataModuleForDistill(L.LightningDataModule):
         self.eval_batch_size = eval_batch_size if eval_batch_size else batch_size
         self.num_workers = num_workers
         self.tokenizer = student_tokenizer
+        self.max_length = max_length
         self.seed = seed
         self.chunk_parts = chunk_parts
         self.max_effective_pairs_per_rank = (
@@ -515,7 +523,9 @@ class DataModuleForDistill(L.LightningDataModule):
             else:
                 raise ValueError(f"Data path {data_path} does not exist.")
 
-        datasets = datasets.train_test_split(test_size=int(min(len(datasets) * 0.1, 1000)), seed=42, shuffle=True)
+        test_size = int(min(len(datasets) * 0.1, 1000))
+        test_size = max(1, test_size) if len(datasets) > 1 else 1
+        datasets = datasets.train_test_split(test_size=test_size, seed=42, shuffle=True)
         logger.info(f"Train: {len(datasets['train'])}, Test: {len(datasets['test'])}, embeddings: {embeddings.shape}")
 
         world_size = get_world_size_safe()  # ← ここで取得
@@ -529,14 +539,14 @@ class DataModuleForDistill(L.LightningDataModule):
             self.collate_fn_train = DataCollatorForAncOnly(
                 tokenizer=self.tokenizer,
                 embeddings=embeddings,
-                max_length=self.tokenizer.model_max_length if hasattr(self.tokenizer, "model_max_length") else 4096,
+                max_length=self.max_length,
                 num_chunk=self.chunk_parts,
                 per_rank_batch_size=self.per_rank_batch_size,
             )
             self.collate_fn_val = DataCollatorForAncOnly(
                 tokenizer=self.tokenizer,
                 embeddings=embeddings,
-                max_length=self.tokenizer.model_max_length if hasattr(self.tokenizer, "model_max_length") else 4096,
+                max_length=self.max_length,
                 num_chunk=self.chunk_parts,
                 per_rank_batch_size=self.eval_batch_size,
             )
