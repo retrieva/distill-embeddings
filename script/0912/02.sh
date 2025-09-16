@@ -34,7 +34,7 @@ echo "[DEBUG] posthoc_eval_batch.py exists? $(test -f src/evaluation/posthoc_eva
 # Default to the most commonly used pair under output/result
 ROOT=${ROOT:-"output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B"}
 # Under this ROOT, experiments live at <data_size>/<code_name>
-PATTERN=${PATTERN:-"1794545/gte_plus_e3_bs128_wsd0.0001_infocse_w-pos  "}
+PATTERN=${PATTERN:-"1794545/gte_plus_e3_bs128_wsd0.0001_infocse_w-pos"}
 EPOCH=${EPOCH:-}
 BENCHMARK=${BENCHMARK:-"MTEB(eng, v2)"}
 LANGUAGE=${LANGUAGE:-}
