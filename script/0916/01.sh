@@ -34,7 +34,7 @@ echo "[DEBUG] posthoc_eval_batch.py exists? $(test -f src/evaluation/posthoc_eva
 ROOT=${ROOT:-"output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B"}
 # Under this ROOT, experiments live at <data_size>/<code_name>
 PATTERN=${PATTERN:-"1794550/gte_en_plus_w_neg_e3_bs128_wsd0.0001_kld0.98_w-pos_prefix"}
-EPOCH=${EPOCH:-}
+EPOCH=${EPOCH:-2}
 BENCHMARK=${BENCHMARK:-"MTEB(eng, v2)"}
 LANGUAGE=${LANGUAGE:-}
 # Default to 16 if BATCH_SIZE is unset
@@ -42,7 +42,7 @@ BATCH_SIZE=${BATCH_SIZE:-16}
 NUM_WORKERS=${NUM_WORKERS:-}
 ADD_PREFIX=${ADD_PREFIX:-True}
 PROJECT=${PROJECT:-"distillation"}
-REUSE_CACHED=${REUSE_CACHED:-}
+REUSE_CACHED=${REUSE_CACHED:-True}
 CACHED_ONLY=${CACHED_ONLY:-}
 ENTITY=${ENTITY:-}
 RESUME_MODE=${RESUME_MODE:-}

@@ -3,7 +3,7 @@
 #PJM -L gpu=1
 #PJM -L elapse=20:00:00
 #PJM -j
-#PJM -o logs/0916/02.log
+#PJM -o logs/0916/05.log
 
 
 module load cuda cudnn nccl gcc
@@ -33,13 +33,13 @@ echo "[DEBUG] posthoc_eval_batch.py exists? $(test -f src/evaluation/posthoc_eva
 # Default to the most commonly used pair under output/result
 ROOT=${ROOT:-"output/result/nomic-ai_modernbert-embed-base-unsupervised/Qwen_Qwen3-Embedding-4B"}
 # Under this ROOT, experiments live at <data_size>/<code_name>
-PATTERN=${PATTERN:-"1794550/gte_en_plus_w_neg_e3_bs128_wsd0.0001_taid-kld0.98_w-pos_prefix"}
+PATTERN=${PATTERN:-"1794550/gte_en_plus_w_neg_e3_bs128_wsd0.0001_infocse_w-pos_prefix"}
 EPOCH=${EPOCH:-2}
 BENCHMARK=${BENCHMARK:-"MTEB(eng, v2)"}
 LANGUAGE=${LANGUAGE:-}
 # Default to 16 if BATCH_SIZE is unset
 BATCH_SIZE=${BATCH_SIZE:-16}
-NUM_WORKERS=${NUM_WORKERS:-}
+NUM_WORKERS=${NUM_WORKERS:-4}
 ADD_PREFIX=${ADD_PREFIX:-True}
 PROJECT=${PROJECT:-"distillation"}
 REUSE_CACHED=${REUSE_CACHED:-True}
