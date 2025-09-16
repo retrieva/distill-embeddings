@@ -102,7 +102,7 @@ def main(args):
             num_workers=args.num_workers,
             trust_remote_code=True,
             verbosity=1,
-            overwrite_results=True,
+            overwrite_results=args.overwrite_results,
         )
     scores_long = ModelResult(
         model_name=model_name,
@@ -229,6 +229,12 @@ if __name__ == "__main__":
         "--wandb_style",
         action="store_true",
         help="wandb_aggスタイルの列構成で追加出力 (code_name/run_name, macro/micro, avg_カテゴリ, タスク列)",
+    )
+    parser.add_argument(
+        "--overwrite_results",
+        type=lambda x: str(x).lower() in ("true", "1", "t", "y", "yes"),
+        default=False,
+        help="既存のタスクJSONを上書きして再評価する (false ならキャッシュを流用)",
     )
     parser.add_argument(
         "--task_sort",

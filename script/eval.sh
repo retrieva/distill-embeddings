@@ -21,7 +21,9 @@ NUM_WORKERS=${NUM_WORKERS:-4}
 ADD_PREFIX=${ADD_PREFIX:-false}
 TASK_SORT=${TASK_SORT:-category_alpha}   # category_alpha | alpha | none
 # Tasks to drop from outputs (comma-separated)
-DROP_TASKS=${DROP_TASKS:-"Touche2020Retrieval.v3,ToxicConversationsClassification,TweetSentimentExtractionClassification,TwentyNewsgroupsClustering.v2,TwitterSemEval2015,TwitterURLCorpus"}
+DROP_TASKS=${DROP_TASKS:-""}
+# Overwrite existing JSONs or reuse cache (false=reuse cache)
+OVERWRITE_RESULTS=${OVERWRITE_RESULTS:-false}
 
 models=("nomic-ai/modernbert-embed-base-unsupervised")
 for model_name in "${models[@]}"; do
@@ -35,5 +37,6 @@ for model_name in "${models[@]}"; do
         --add_prefix "${ADD_PREFIX}" \
         --wandb_style \
         --task_sort "${TASK_SORT}" \
-        --drop_tasks "${DROP_TASKS}"
+        --drop_tasks "${DROP_TASKS}" \
+        --overwrite_results "${OVERWRITE_RESULTS}"
 done
