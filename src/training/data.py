@@ -3,6 +3,7 @@ import os
 import random
 import time
 from collections import defaultdict
+from collections.abc import Collection
 from dataclasses import dataclass
 
 import lightning as L
@@ -87,6 +88,8 @@ class TaskBatchDataset(Dataset):
         shuffle_within_task=True,
         shuffle_task_batches=True,
         seed=42,
+        label_group_subsets: Collection[str] | None = None,
+        label_column: str = "label",
     ):
         self.hf_dataset = hf_dataset
         self.embeddings = embeddings
@@ -109,6 +112,8 @@ class TaskBatchDataset(Dataset):
         self.seed = seed
         self._batches = []
         self._neg_len = None  # lazily prepared cache of negatives length per sample
+        self.label_group_subsets = set(label_group_subsets or [])
+        self.label_column = label_column
         self.rebuild_batches(0)
 
     def _group_indices_by_task(self):
@@ -116,8 +121,22 @@ class TaskBatchDataset(Dataset):
         t0 = time.time()
         subsets_col = self.hf_dataset["subset"]  # list[str]
         task_indices = defaultdict(list)
+        labels = None
+        if self.label_group_subsets:
+            if self.label_column in self.hf_dataset.column_names:
+                raw_labels = self.hf_dataset[self.label_column]
+                labels = ["" if v is None else str(v) for v in raw_labels]
+            else:
+                logger.warning(
+                    "[TaskBatchDataset] label_column='%s' not found; falling back to subset-only grouping",
+                    self.label_column,
+                )
+        use_label = labels is not None
         for i, s in enumerate(subsets_col):
-            task_indices[s].append(i)
+            key = s
+            if use_label and s in self.label_group_subsets:
+                key = (s, labels[i])
+            task_indices[key].append(i)
         logger.info(f"Grouped {len(subsets_col)} rows into {len(task_indices)} subsets in {time.time() - t0:.1f}s")
         return task_indices
 
@@ -469,6 +488,10 @@ class DataModuleForDistill(L.LightningDataModule):
         self.max_neg_per_sample = (
             int(max_neg_per_sample) if max_neg_per_sample is not None and int(max_neg_per_sample) > 0 else None
         )
+        self.label_group_subsets: set[str] = set()
+        if "w_label_data" in str(self.data_dir):
+            self.label_group_subsets = {"agnews", "yahoo_answers_title_answer"}
+        self.label_column = "label"
 
         if ("triplet" in str(self.data_dir)) or ("gte" in str(self.data_dir)):
             self.collate_fn_train = DataCollatorForContrastiveDistill(
@@ -576,6 +599,8 @@ class DataModuleForDistill(L.LightningDataModule):
                 world_size=world_size,
                 max_effective_pairs_per_rank=self.max_effective_pairs_per_rank,
                 max_neg_per_sample=self.max_neg_per_sample,
+                label_group_subsets=self.label_group_subsets,
+                label_column=self.label_column,
                 drop_last=True,
                 shuffle_within_task=True,
                 shuffle_task_batches=True,
@@ -588,6 +613,8 @@ class DataModuleForDistill(L.LightningDataModule):
                 world_size=world_size,
                 max_effective_pairs_per_rank=self.max_effective_pairs_per_rank,
                 max_neg_per_sample=self.max_neg_per_sample,
+                label_group_subsets=self.label_group_subsets,
+                label_column=self.label_column,
                 drop_last=True,
                 shuffle_within_task=False,
                 shuffle_task_batches=False,
