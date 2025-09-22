@@ -11,7 +11,7 @@ nvidia-smi
 
 uv sync
 uv run python -m src.data_processing.finweb.encode \
-    --data_name "hotchpotch/fineweb-2-edu-japanese" \
+    --data_name "HuggingFaceFW/fineweb" \
     --subset_name "sample_10BT" \
     --sample_size 1794545 \
     --output_dir "data" \

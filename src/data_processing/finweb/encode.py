@@ -14,8 +14,8 @@ from src.data_processing.encode_utils import (
     encode_with_checkpoint,
     encode_with_checkpoint_multigpu,
     get_available_gpus,
-    setup_multiprocess_pool,
     save_split_dataset,
+    setup_multiprocess_pool,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -92,9 +92,11 @@ def main(args):
         args.subset_name,
         split="train",
     )
+    print(args.sample_size)
     # Downsample if requested
     if args.sample_size:
         dataset = dataset.select(range(min(args.sample_size, len(dataset))))
+    print(len(dataset))
     # Optional sharding for parallel jobs
     if args.num_shards > 1:
         assert 0 <= args.shard_id < args.num_shards, "shard_id must be in [0, num_shards)"
