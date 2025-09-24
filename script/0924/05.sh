@@ -45,7 +45,7 @@ PROJECT=${PROJECT:-"distillation"}
 REUSE_CACHED=${REUSE_CACHED:-}
 CACHED_ONLY=${CACHED_ONLY:-}
 ENTITY=${ENTITY:-}
-RESUME_MODE=${RESUME_MODE:-}
+RESUME_MODE=${RESUME_MODE:-1}
 # Optional: base student model (HF id). If unset, infer from ROOT's first segment
 STUDENT=${STUDENT:-}
 SKIP_IF_EXISTS=${SKIP_IF_EXISTS:-}
