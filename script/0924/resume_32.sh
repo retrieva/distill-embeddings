@@ -7,9 +7,22 @@
 
 set -eu
 
-# Ensure working directory is the repo root (distill-embeddings)
-SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-REPO_ROOT=$(cd "${SCRIPT_DIR}/../.." && pwd)
+# Ensure we run from the repository root even when pjsub stages a copy of the script
+if [ -n "${PJM_O_WORKDIR:-}" ]; then
+  REPO_ROOT_CANDIDATE="${PJM_O_WORKDIR}"
+  if REPO_ROOT=$(cd "${REPO_ROOT_CANDIDATE}" && git rev-parse --show-toplevel 2>/dev/null); then
+    :
+  else
+    REPO_ROOT="${REPO_ROOT_CANDIDATE}"
+  fi
+else
+  SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+  if REPO_ROOT=$(cd "${SCRIPT_DIR}" && git rev-parse --show-toplevel 2>/dev/null); then
+    :
+  else
+    REPO_ROOT=$(cd "${SCRIPT_DIR}/../.." && pwd)
+  fi
+fi
 cd "${REPO_ROOT}"
 
 module load cuda cudnn nccl gcc
@@ -35,8 +48,12 @@ export NUMEXPR_NUM_THREADS=32
 export TOKENIZERS_PARALLELISM=false
 export LOKY_MAX_CPU_COUNT=32
 
-# SSL for HF downloads
-export SSL_CERT_FILE=$(uv run python -c "import certifi; print(certifi.where())")
+# SSL for HF downloads (if certifi is available)
+if SSL_CERT_PATH=$(uv run python -c "import certifi; print(certifi.where())" 2>/dev/null); then
+  export SSL_CERT_FILE="${SSL_CERT_PATH}"
+else
+  echo "Warning: certifi not available; continuing without SSL_CERT_FILE override" >&2
+fi
 
 # Experiment params (match 16.sh)
 STUDENT="nomic-ai/modernbert-embed-base-unsupervised"
